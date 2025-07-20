@@ -22,6 +22,7 @@ from sleap_nn.data.resizing import (
 )
 from sleap_nn.data.normalization import (
     apply_normalization,
+    apply_imagenet_normalization,
 )
 from sleap_nn.config.utils import get_model_type_from_cfg
 from sleap_nn.inference.paf_grouping import PAFScorer
@@ -354,7 +355,6 @@ class Predictor(ABC):
             refresh_per_second=4,  # Change to self.report_rate if needed
             speed_estimate_period=5,
         ) as progress:
-
             task = progress.add_task("Predicting...", total=total_frames)
             last_report = time()
 
@@ -392,6 +392,9 @@ class Predictor(ABC):
                         frame["image"] = F.rgb_to_grayscale(
                             frame["image"], num_output_channels=1
                         )
+
+                    if self.preprocess_config.get("imagenet_normalize", False):
+                        frame["image"] = apply_imagenet_normalization(frame["image"])
 
                     eff_scales.append(torch.tensor(eff_scale))
                     imgs.append(frame["image"].unsqueeze(dim=0))
@@ -574,13 +577,9 @@ class TopDownPredictor(Predictor):
         else:
             anch_pt = None
             if self.centroid_config is not None:
-                anch_pt = (
-                    self.centroid_config.model_config.head_configs.centroid.confmaps.anchor_part
-                )
+                anch_pt = self.centroid_config.model_config.head_configs.centroid.confmaps.anchor_part
             elif self.confmap_config is not None:
-                anch_pt = (
-                    self.confmap_config.model_config.head_configs.centered_instance.confmaps.anchor_part
-                )
+                anch_pt = self.confmap_config.model_config.head_configs.centered_instance.confmaps.anchor_part
             anchor_ind = (
                 self.skeletons[0].node_names.index(anch_pt)
                 if anch_pt is not None
@@ -620,7 +619,6 @@ class TopDownPredictor(Predictor):
             instance_peaks_layer = FindInstancePeaksGroundTruth()
             self.instances_key = True
         else:
-
             max_stride = self.confmap_config.model_config.backbone_config[
                 f"{self.centered_instance_backbone_type}"
             ]["max_stride"]
@@ -897,23 +895,25 @@ class TopDownPredictor(Predictor):
             provider = LabelsReader
 
             self.preprocess = False
-            self.preprocess_config = {
-                "batch_size": self.batch_size,
-                "scale": scale,
-                "ensure_rgb": self.data_config.ensure_rgb,
-                "ensure_grayscale": self.data_config.ensure_grayscale,
-                "max_stride": max_stride,
-                "max_height": (
-                    self.data_config.max_height
-                    if self.data_config.max_height is not None
-                    else max_height
-                ),
-                "max_width": (
-                    self.data_config.max_width
-                    if self.data_config.max_width is not None
-                    else max_width
-                ),
-            }
+            self.preprocess_config = OmegaConf.create(
+                {
+                    "batch_size": self.batch_size,
+                    "scale": scale,
+                    "ensure_rgb": self.data_config.ensure_rgb,
+                    "ensure_grayscale": self.data_config.ensure_grayscale,
+                    "max_stride": max_stride,
+                    "max_height": (
+                        self.data_config.max_height
+                        if self.data_config.max_height is not None
+                        else max_height
+                    ),
+                    "max_width": (
+                        self.data_config.max_width
+                        if self.data_config.max_width is not None
+                        else max_width
+                    ),
+                }
+            )
 
             self.pipeline = provider.from_filename(
                 filename=data_path,
@@ -935,27 +935,29 @@ class TopDownPredictor(Predictor):
                 raise ValueError(message)
 
             self.preprocess = False
-            self.preprocess_config = {
-                "batch_size": self.batch_size,
-                "scale": self.centroid_config.data_config.preprocessing.scale,
-                "ensure_rgb": self.data_config.ensure_rgb,
-                "ensure_grayscale": self.data_config.ensure_grayscale,
-                "max_stride": (
-                    self.centroid_config.model_config.backbone_config[
-                        f"{self.centroid_backbone_type}"
-                    ]["max_stride"]
-                ),
-                "max_height": (
-                    self.data_config.max_height
-                    if self.data_config.max_height is not None
-                    else max_height
-                ),
-                "max_width": (
-                    self.data_config.max_width
-                    if self.data_config.max_width is not None
-                    else max_width
-                ),
-            }
+            self.preprocess_config = OmegaConf.create(
+                {
+                    "batch_size": self.batch_size,
+                    "scale": self.centroid_config.data_config.preprocessing.scale,
+                    "ensure_rgb": self.data_config.ensure_rgb,
+                    "ensure_grayscale": self.data_config.ensure_grayscale,
+                    "max_stride": (
+                        self.centroid_config.model_config.backbone_config[
+                            f"{self.centroid_backbone_type}"
+                        ]["max_stride"]
+                    ),
+                    "max_height": (
+                        self.data_config.max_height
+                        if self.data_config.max_height is not None
+                        else max_height
+                    ),
+                    "max_width": (
+                        self.data_config.max_width
+                        if self.data_config.max_width is not None
+                        else max_width
+                    ),
+                }
+            )
 
             if data_path.endswith(".slp") and video_index is not None:
                 labels = sio.load_slp(data_path)
@@ -1270,23 +1272,26 @@ class SingleInstancePredictor(Predictor):
             ]["max_stride"]
 
             self.preprocess = False
-            self.preprocess_config = {
-                "batch_size": self.batch_size,
-                "scale": self.confmap_config.data_config.preprocessing.scale,
-                "ensure_rgb": self.data_config.ensure_rgb,
-                "ensure_grayscale": self.data_config.ensure_grayscale,
-                "max_stride": max_stride,
-                "max_height": (
-                    self.data_config.max_height
-                    if self.data_config.max_height is not None
-                    else self.confmap_config.data_config.preprocessing.max_height
-                ),
-                "max_width": (
-                    self.data_config.max_width
-                    if self.data_config.max_width is not None
-                    else self.confmap_config.data_config.preprocessing.max_width
-                ),
-            }
+            self.preprocess_config = OmegaConf.create(
+                {
+                    "batch_size": self.batch_size,
+                    "scale": self.confmap_config.data_config.preprocessing.scale,
+                    "ensure_rgb": self.data_config.ensure_rgb,
+                    "ensure_grayscale": self.data_config.ensure_grayscale,
+                    "max_stride": max_stride,
+                    "max_height": (
+                        self.data_config.max_height
+                        if self.data_config.max_height is not None
+                        else self.confmap_config.data_config.preprocessing.max_height
+                    ),
+                    "max_width": (
+                        self.data_config.max_width
+                        if self.data_config.max_width is not None
+                        else self.confmap_config.data_config.preprocessing.max_width
+                    ),
+                    "imagenet_normalize": self.confmap_config.data_config.preprocessing.imagenet_normalize,
+                }
+            )
 
             self.pipeline = provider.from_filename(
                 filename=data_path,
@@ -1299,27 +1304,30 @@ class SingleInstancePredictor(Predictor):
         else:
             provider = VideoReader
             self.preprocess = True
-            self.preprocess_config = {
-                "batch_size": self.batch_size,
-                "scale": self.confmap_config.data_config.preprocessing.scale,
-                "ensure_rgb": self.data_config.ensure_rgb,
-                "ensure_grayscale": self.data_config.ensure_grayscale,
-                "max_stride": (
-                    self.confmap_config.model_config.backbone_config[
-                        f"{self.backbone_type}"
-                    ]["max_stride"]
-                ),
-                "max_height": (
-                    self.data_config.max_height
-                    if self.data_config.max_height is not None
-                    else self.confmap_config.data_config.preprocessing.max_height
-                ),
-                "max_width": (
-                    self.data_config.max_width
-                    if self.data_config.max_width is not None
-                    else self.confmap_config.data_config.preprocessing.max_width
-                ),
-            }
+            self.preprocess_config = OmegaConf.create(
+                obj={
+                    "batch_size": self.batch_size,
+                    "scale": self.confmap_config.data_config.preprocessing.scale,
+                    "ensure_rgb": self.data_config.ensure_rgb,
+                    "ensure_grayscale": self.data_config.ensure_grayscale,
+                    "max_stride": (
+                        self.confmap_config.model_config.backbone_config[
+                            f"{self.backbone_type}"
+                        ]["max_stride"]
+                    ),
+                    "max_height": (
+                        self.data_config.max_height
+                        if self.data_config.max_height is not None
+                        else self.confmap_config.data_config.preprocessing.max_height
+                    ),
+                    "max_width": (
+                        self.data_config.max_width
+                        if self.data_config.max_width is not None
+                        else self.confmap_config.data_config.preprocessing.max_width
+                    ),
+                    "imagenet_normalize": self.confmap_config.data_config.preprocessing.imagenet_normalize,
+                }
+            )
 
             if data_path.endswith(".slp") and video_index is not None:
                 labels = sio.load_slp(data_path)
@@ -1376,7 +1384,6 @@ class SingleInstancePredictor(Predictor):
                 ex["pred_peak_values"],
                 ex["orig_size"],
             ):
-
                 if np.isnan(pred_instances).all():
                     continue
                 inst = sio.PredictedInstance.from_numpy(
@@ -1664,23 +1671,25 @@ class BottomUpPredictor(Predictor):
             ]["max_stride"]
 
             self.preprocess = False
-            self.preprocess_config = {
-                "batch_size": self.batch_size,
-                "scale": self.bottomup_config.data_config.preprocessing.scale,
-                "ensure_rgb": self.data_config.ensure_rgb,
-                "ensure_grayscale": self.data_config.ensure_grayscale,
-                "max_stride": max_stride,
-                "max_height": (
-                    self.data_config.max_height
-                    if self.data_config.max_height is not None
-                    else self.bottomup_config.data_config.preprocessing.max_height
-                ),
-                "max_width": (
-                    self.data_config.max_width
-                    if self.data_config.max_width is not None
-                    else self.bottomup_config.data_config.preprocessing.max_width
-                ),
-            }
+            self.preprocess_config = OmegaConf.create(
+                {
+                    "batch_size": self.batch_size,
+                    "scale": self.bottomup_config.data_config.preprocessing.scale,
+                    "ensure_rgb": self.data_config.ensure_rgb,
+                    "ensure_grayscale": self.data_config.ensure_grayscale,
+                    "max_stride": max_stride,
+                    "max_height": (
+                        self.data_config.max_height
+                        if self.data_config.max_height is not None
+                        else self.bottomup_config.data_config.preprocessing.max_height
+                    ),
+                    "max_width": (
+                        self.data_config.max_width
+                        if self.data_config.max_width is not None
+                        else self.bottomup_config.data_config.preprocessing.max_width
+                    ),
+                }
+            )
 
             self.pipeline = provider.from_filename(
                 filename=data_path,
@@ -1693,27 +1702,29 @@ class BottomUpPredictor(Predictor):
         else:
             provider = VideoReader
             self.preprocess = True
-            self.preprocess_config = {
-                "batch_size": self.batch_size,
-                "scale": self.bottomup_config.data_config.preprocessing.scale,
-                "ensure_rgb": self.data_config.ensure_rgb,
-                "ensure_grayscale": self.data_config.ensure_grayscale,
-                "max_stride": (
-                    self.bottomup_config.model_config.backbone_config[
-                        f"{self.backbone_type}"
-                    ]["max_stride"]
-                ),
-                "max_height": (
-                    self.data_config.max_height
-                    if self.data_config.max_height is not None
-                    else self.bottomup_config.data_config.preprocessing.max_height
-                ),
-                "max_width": (
-                    self.data_config.max_width
-                    if self.data_config.max_width is not None
-                    else self.bottomup_config.data_config.preprocessing.max_width
-                ),
-            }
+            self.preprocess_config = OmegaConf.create(
+                {
+                    "batch_size": self.batch_size,
+                    "scale": self.bottomup_config.data_config.preprocessing.scale,
+                    "ensure_rgb": self.data_config.ensure_rgb,
+                    "ensure_grayscale": self.data_config.ensure_grayscale,
+                    "max_stride": (
+                        self.bottomup_config.model_config.backbone_config[
+                            f"{self.backbone_type}"
+                        ]["max_stride"]
+                    ),
+                    "max_height": (
+                        self.data_config.max_height
+                        if self.data_config.max_height is not None
+                        else self.bottomup_config.data_config.preprocessing.max_height
+                    ),
+                    "max_width": (
+                        self.data_config.max_width
+                        if self.data_config.max_width is not None
+                        else self.bottomup_config.data_config.preprocessing.max_width
+                    ),
+                }
+            )
 
             if data_path.endswith(".slp") and video_index is not None:
                 labels = sio.load_slp(data_path)
@@ -1772,7 +1783,6 @@ class BottomUpPredictor(Predictor):
                 ex["pred_peak_values"],
                 ex["instance_scores"],
             ):
-
                 # Loop over instances.
                 predicted_instances = []
                 for pts, confs, score in zip(
@@ -2054,23 +2064,25 @@ class BottomUpMultiClassPredictor(Predictor):
             ]["max_stride"]
 
             self.preprocess = False
-            self.preprocess_config = {
-                "batch_size": self.batch_size,
-                "scale": self.bottomup_config.data_config.preprocessing.scale,
-                "ensure_rgb": self.data_config.ensure_rgb,
-                "ensure_grayscale": self.data_config.ensure_grayscale,
-                "max_stride": max_stride,
-                "max_height": (
-                    self.data_config.max_height
-                    if self.data_config.max_height is not None
-                    else self.bottomup_config.data_config.preprocessing.max_height
-                ),
-                "max_width": (
-                    self.data_config.max_width
-                    if self.data_config.max_width is not None
-                    else self.bottomup_config.data_config.preprocessing.max_width
-                ),
-            }
+            self.preprocess_config = OmegaConf.create(
+                {
+                    "batch_size": self.batch_size,
+                    "scale": self.bottomup_config.data_config.preprocessing.scale,
+                    "ensure_rgb": self.data_config.ensure_rgb,
+                    "ensure_grayscale": self.data_config.ensure_grayscale,
+                    "max_stride": max_stride,
+                    "max_height": (
+                        self.data_config.max_height
+                        if self.data_config.max_height is not None
+                        else self.bottomup_config.data_config.preprocessing.max_height
+                    ),
+                    "max_width": (
+                        self.data_config.max_width
+                        if self.data_config.max_width is not None
+                        else self.bottomup_config.data_config.preprocessing.max_width
+                    ),
+                }
+            )
 
             self.pipeline = provider.from_filename(
                 filename=data_path,
@@ -2083,27 +2095,29 @@ class BottomUpMultiClassPredictor(Predictor):
         else:
             provider = VideoReader
             self.preprocess = True
-            self.preprocess_config = {
-                "batch_size": self.batch_size,
-                "scale": self.bottomup_config.data_config.preprocessing.scale,
-                "ensure_rgb": self.data_config.ensure_rgb,
-                "ensure_grayscale": self.data_config.ensure_grayscale,
-                "max_stride": (
-                    self.bottomup_config.model_config.backbone_config[
-                        f"{self.backbone_type}"
-                    ]["max_stride"]
-                ),
-                "max_height": (
-                    self.data_config.max_height
-                    if self.data_config.max_height is not None
-                    else self.bottomup_config.data_config.preprocessing.max_height
-                ),
-                "max_width": (
-                    self.data_config.max_width
-                    if self.data_config.max_width is not None
-                    else self.bottomup_config.data_config.preprocessing.max_width
-                ),
-            }
+            self.preprocess_config = OmegaConf.create(
+                {
+                    "batch_size": self.batch_size,
+                    "scale": self.bottomup_config.data_config.preprocessing.scale,
+                    "ensure_rgb": self.data_config.ensure_rgb,
+                    "ensure_grayscale": self.data_config.ensure_grayscale,
+                    "max_stride": (
+                        self.bottomup_config.model_config.backbone_config[
+                            f"{self.backbone_type}"
+                        ]["max_stride"]
+                    ),
+                    "max_height": (
+                        self.data_config.max_height
+                        if self.data_config.max_height is not None
+                        else self.bottomup_config.data_config.preprocessing.max_height
+                    ),
+                    "max_width": (
+                        self.data_config.max_width
+                        if self.data_config.max_width is not None
+                        else self.bottomup_config.data_config.preprocessing.max_width
+                    ),
+                }
+            )
 
             if data_path.endswith(".slp") and video_index is not None:
                 labels = sio.load_slp(data_path)
@@ -2166,7 +2180,6 @@ class BottomUpMultiClassPredictor(Predictor):
                 ex["pred_peak_values"],
                 ex["instance_scores"],
             ):
-
                 # Loop over instances.
                 predicted_instances = []
                 for i, (pts, confs, score) in enumerate(
@@ -2305,9 +2318,7 @@ class TopDownMultiClassPredictor(Predictor):
             anchor_ind = self.skeletons[0].node_names.index(self.anchor_part)
         else:
             anch_pt = None
-            anch_pt = (
-                self.confmap_config.model_config.head_configs.multi_class_topdown.confmaps.anchor_part
-            )
+            anch_pt = self.confmap_config.model_config.head_configs.multi_class_topdown.confmaps.anchor_part
             anchor_ind = (
                 self.skeletons[0].node_names.index(anch_pt)
                 if anch_pt is not None
@@ -2644,23 +2655,25 @@ class TopDownMultiClassPredictor(Predictor):
             provider = LabelsReader
 
             self.preprocess = False
-            self.preprocess_config = {
-                "batch_size": self.batch_size,
-                "scale": scale,
-                "ensure_rgb": self.data_config.ensure_rgb,
-                "ensure_grayscale": self.data_config.ensure_grayscale,
-                "max_stride": max_stride,
-                "max_height": (
-                    self.data_config.max_height
-                    if self.data_config.max_height is not None
-                    else max_height
-                ),
-                "max_width": (
-                    self.data_config.max_width
-                    if self.data_config.max_width is not None
-                    else max_width
-                ),
-            }
+            self.preprocess_config = OmegaConf.create(
+                {
+                    "batch_size": self.batch_size,
+                    "scale": scale,
+                    "ensure_rgb": self.data_config.ensure_rgb,
+                    "ensure_grayscale": self.data_config.ensure_grayscale,
+                    "max_stride": max_stride,
+                    "max_height": (
+                        self.data_config.max_height
+                        if self.data_config.max_height is not None
+                        else max_height
+                    ),
+                    "max_width": (
+                        self.data_config.max_width
+                        if self.data_config.max_width is not None
+                        else max_width
+                    ),
+                }
+            )
 
             self.pipeline = provider.from_filename(
                 filename=data_path,
@@ -2682,27 +2695,29 @@ class TopDownMultiClassPredictor(Predictor):
                 raise ValueError(message)
 
             self.preprocess = False
-            self.preprocess_config = {
-                "batch_size": self.batch_size,
-                "scale": self.centroid_config.data_config.preprocessing.scale,
-                "ensure_rgb": self.data_config.ensure_rgb,
-                "ensure_grayscale": self.data_config.ensure_grayscale,
-                "max_stride": (
-                    self.centroid_config.model_config.backbone_config[
-                        f"{self.centroid_backbone_type}"
-                    ]["max_stride"]
-                ),
-                "max_height": (
-                    self.data_config.max_height
-                    if self.data_config.max_height is not None
-                    else max_height
-                ),
-                "max_width": (
-                    self.data_config.max_width
-                    if self.data_config.max_width is not None
-                    else max_width
-                ),
-            }
+            self.preprocess_config = OmegaConf.create(
+                {
+                    "batch_size": self.batch_size,
+                    "scale": self.centroid_config.data_config.preprocessing.scale,
+                    "ensure_rgb": self.data_config.ensure_rgb,
+                    "ensure_grayscale": self.data_config.ensure_grayscale,
+                    "max_stride": (
+                        self.centroid_config.model_config.backbone_config[
+                            f"{self.centroid_backbone_type}"
+                        ]["max_stride"]
+                    ),
+                    "max_height": (
+                        self.data_config.max_height
+                        if self.data_config.max_height is not None
+                        else max_height
+                    ),
+                    "max_width": (
+                        self.data_config.max_width
+                        if self.data_config.max_width is not None
+                        else max_width
+                    ),
+                }
+            )
 
             if data_path.endswith(".slp") and video_index is not None:
                 labels = sio.load_slp(data_path)
@@ -3067,7 +3082,9 @@ def run_inference(
             device = (
                 "cuda"
                 if torch.cuda.is_available()
-                else "mps" if torch.backends.mps.is_available() else "cpu"
+                else "mps"
+                if torch.backends.mps.is_available()
+                else "cpu"
             )
 
         if integral_refinement is not None:  # TODO

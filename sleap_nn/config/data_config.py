@@ -25,6 +25,7 @@ class PreprocessingConfig:
         scale: (float) Factor to resize the image dimensions by, specified as a float. *Default*: `1.0`.
         crop_hw: (Tuple[int]) Crop height and width of each instance (h, w) for centered-instance model. If `None`, this would be automatically computed based on the largest instance in the `sio.Labels` file. *Default*: `None`.
         min_crop_size: (int) Minimum crop size to be used if `crop_hw` is `None`. *Default*: `100`.
+        imagenet_normalize: (bool) True if ImageNet normalization should be applied (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]). Only applies to RGB images. *Default*: `False`.
     """
 
     ensure_rgb: bool = False
@@ -36,6 +37,7 @@ class PreprocessingConfig:
     )
     crop_hw: Optional[Tuple[int, int]] = None
     min_crop_size: Optional[int] = 100  # to help app work in case of error
+    imagenet_normalize: bool = False
 
     def validate_scale(self):
         """Scale Validation.
@@ -105,6 +107,8 @@ class GeometricConfig:
         translate_width: (float) Maximum absolute fraction for horizontal translation. For example, if translate_width=a, then horizontal shift is randomly sampled in the range -img_width * a < dx < img_width * a. Will not translate by default. *Default*: `0.0`.
         translate_height: (float) Maximum absolute fraction for vertical translation. For example, if translate_height=a, then vertical shift is randomly sampled in the range -img_height * a < dy < img_height * a. Will not translate by default. *Default*: `0.0`.
         affine_p: (float) Probability of applying random affine transformations. *Default*: `0.0`.
+        horizontal_flip_p: (float) Probability of applying random horizontal flip. *Default*: `0.0`.
+        vertical_flip_p: (float) Probability of applying random vertical flip. *Default*: `0.0`.
         erase_scale_min: (float) Minimum value of range of proportion of erased area against input image. *Default*: `0.0001`.
         erase_scale_max: (float) Maximum value of range of proportion of erased area against input image. *Default*: `0.01`.
         erase_ratio_min: (float) Minimum value of range of aspect ratio of erased area. *Default*: `1.0`.
@@ -119,6 +123,8 @@ class GeometricConfig:
     translate_width: float = 0.0
     translate_height: float = 0.0
     affine_p: float = field(default=0.0, validator=validate_proportion)
+    horizontal_flip_p: float = field(default=0.0, validator=validate_proportion)
+    vertical_flip_p: float = field(default=0.0, validator=validate_proportion)
     erase_scale_min: float = 0.0001
     erase_scale_max: float = 0.01
     erase_ratio_min: float = 1.0

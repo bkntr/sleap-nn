@@ -113,6 +113,8 @@ def apply_geometric_augmentation(
     translate_width: Optional[float] = 0.02,
     translate_height: Optional[float] = 0.02,
     affine_p: float = 0.0,
+    horizontal_flip_p: float = 0.0,
+    vertical_flip_p: float = 0.0,
     erase_scale_min: Optional[float] = 0.0001,
     erase_scale_max: Optional[float] = 0.01,
     erase_ratio_min: Optional[float] = 1,
@@ -140,6 +142,8 @@ def apply_geometric_augmentation(
             if translate_height=a, then vertical shift is randomly sampled in the range
             -img_height * a < dy < img_height * a. Will not translate by default.
         affine_p: Probability of applying random affine transformations.
+        horizontal_flip_p: Probability of applying random horizontal flip.
+        vertical_flip_p: Probability of applying random vertical flip.
         erase_scale_min: Minimum value of range of proportion of erased area against input image. Default: 0.0001.
         erase_scale_max: Maximum value of range of proportion of erased area against input image. Default: 0.01.
         erase_ratio_min: Minimum value of range of aspect ratio of erased area. Default: 1.
@@ -160,6 +164,24 @@ def apply_geometric_augmentation(
                 translate=(translate_width, translate_height),
                 scale=scale,
                 p=affine_p,
+                keepdim=True,
+                same_on_batch=True,
+            )
+        )
+
+    if horizontal_flip_p > 0:
+        aug_stack.append(
+            K.augmentation.RandomHorizontalFlip(
+                p=horizontal_flip_p,
+                keepdim=True,
+                same_on_batch=True,
+            )
+        )
+
+    if vertical_flip_p > 0:
+        aug_stack.append(
+            K.augmentation.RandomVerticalFlip(
+                p=vertical_flip_p,
                 keepdim=True,
                 same_on_batch=True,
             )

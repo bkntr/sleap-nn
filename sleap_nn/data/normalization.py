@@ -43,3 +43,26 @@ def apply_normalization(image: torch.Tensor):
     if not torch.is_floating_point(image):
         image = image.to(torch.float32) / 255.0
     return image
+
+
+def apply_imagenet_normalization(image: torch.Tensor):
+    """Apply ImageNet normalization to image tensor.
+
+    Normalizes the image using ImageNet dataset statistics:
+    - mean=[0.485, 0.456, 0.406]
+    - std=[0.229, 0.224, 0.225]
+
+    This normalization is commonly used when fine-tuning models pre-trained on ImageNet.
+
+    Args:
+        image: Tensor image of shape (..., 3, H, W) with values in [0, 1] range
+
+    Returns:
+        Normalized tensor image with ImageNet statistics applied
+    """
+    if image.shape[-3] != 3:
+        raise ValueError(
+            f"ImageNet normalization requires 3-channel RGB images, got {image.shape[-3]} channels"
+        )
+
+    return F.normalize(image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])

@@ -19,6 +19,7 @@ from sleap_nn.data.instance_centroids import generate_centroids
 from sleap_nn.data.instance_cropping import generate_crops
 from sleap_nn.data.normalization import (
     apply_normalization,
+    apply_imagenet_normalization,
     convert_to_grayscale,
     convert_to_rgb,
 )
@@ -73,6 +74,7 @@ class BaseDataset(Dataset):
         user_instances_only: bool = True,
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
+        imagenet_normalize: bool = False,
         augmentation_config: Optional[DictConfig] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
@@ -88,6 +90,7 @@ class BaseDataset(Dataset):
         self.user_instances_only = user_instances_only
         self.ensure_rgb = ensure_rgb
         self.ensure_grayscale = ensure_grayscale
+        self.imagenet_normalize = imagenet_normalize
         self.augmentation_config = augmentation_config
         self.curr_idx = 0
         self.max_stride = max_stride
@@ -238,6 +241,7 @@ class BottomUpDataset(BaseDataset):
         user_instances_only: bool = True,
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
+        imagenet_normalize: bool = False,
         augmentation_config: Optional[DictConfig] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
@@ -254,6 +258,7 @@ class BottomUpDataset(BaseDataset):
             user_instances_only=user_instances_only,
             ensure_rgb=ensure_rgb,
             ensure_grayscale=ensure_grayscale,
+            imagenet_normalize=imagenet_normalize,
             augmentation_config=augmentation_config,
             scale=scale,
             apply_aug=apply_aug,
@@ -308,6 +313,12 @@ class BottomUpDataset(BaseDataset):
             sample["image"] = convert_to_rgb(sample["image"])
         elif self.ensure_grayscale:
             sample["image"] = convert_to_grayscale(sample["image"])
+
+        # apply ImageNet normalization if enabled (requires RGB images)
+        if self.imagenet_normalize:
+            if sample["image"].shape[-3] != 3:
+                raise ValueError("ImageNet normalization requires RGB images (3 channels)")
+            sample["image"] = apply_imagenet_normalization(sample["image"])
 
         # size matcher
         sample["image"], eff_scale = apply_sizematcher(
@@ -423,6 +434,7 @@ class BottomUpMultiClassDataset(BaseDataset):
         user_instances_only: bool = True,
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
+        imagenet_normalize: bool = False,
         augmentation_config: Optional[DictConfig] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
@@ -439,6 +451,7 @@ class BottomUpMultiClassDataset(BaseDataset):
             user_instances_only=user_instances_only,
             ensure_rgb=ensure_rgb,
             ensure_grayscale=ensure_grayscale,
+            imagenet_normalize=imagenet_normalize,
             augmentation_config=augmentation_config,
             scale=scale,
             apply_aug=apply_aug,
@@ -509,6 +522,12 @@ class BottomUpMultiClassDataset(BaseDataset):
             sample["image"] = convert_to_rgb(sample["image"])
         elif self.ensure_grayscale:
             sample["image"] = convert_to_grayscale(sample["image"])
+
+        # apply ImageNet normalization if enabled (requires RGB images)
+        if self.imagenet_normalize:
+            if sample["image"].shape[-3] != 3:
+                raise ValueError("ImageNet normalization requires RGB images (3 channels)")
+            sample["image"] = apply_imagenet_normalization(sample["image"])
 
         # size matcher
         sample["image"], eff_scale = apply_sizematcher(
@@ -732,6 +751,12 @@ class CenteredInstanceDataset(BaseDataset):
             image = convert_to_rgb(image)
         elif self.ensure_grayscale:
             image = convert_to_grayscale(image)
+
+        # apply ImageNet normalization if enabled (requires RGB images)
+        if self.imagenet_normalize:
+            if image.shape[-3] != 3:
+                raise ValueError("ImageNet normalization requires RGB images (3 channels)")
+            image = apply_imagenet_normalization(image)
 
         # size matcher
         image, eff_scale = apply_sizematcher(
@@ -965,6 +990,12 @@ class TopDownCenteredInstanceMultiClassDataset(CenteredInstanceDataset):
         elif self.ensure_grayscale:
             image = convert_to_grayscale(image)
 
+        # apply ImageNet normalization if enabled (requires RGB images)
+        if self.imagenet_normalize:
+            if image.shape[-3] != 3:
+                raise ValueError("ImageNet normalization requires RGB images (3 channels)")
+            image = apply_imagenet_normalization(image)
+
         # size matcher
         image, eff_scale = apply_sizematcher(
             image,
@@ -1191,6 +1222,12 @@ class CentroidDataset(BaseDataset):
         elif self.ensure_grayscale:
             sample["image"] = convert_to_grayscale(sample["image"])
 
+        # apply ImageNet normalization if enabled (requires RGB images)
+        if self.imagenet_normalize:
+            if sample["image"].shape[-3] != 3:
+                raise ValueError("ImageNet normalization requires RGB images (3 channels)")
+            sample["image"] = apply_imagenet_normalization(sample["image"])
+
         # size matcher
         sample["image"], eff_scale = apply_sizematcher(
             sample["image"],
@@ -1292,6 +1329,7 @@ class SingleInstanceDataset(BaseDataset):
         user_instances_only: bool = True,
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
+        imagenet_normalize: bool = False,
         augmentation_config: Optional[DictConfig] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
@@ -1308,6 +1346,7 @@ class SingleInstanceDataset(BaseDataset):
             user_instances_only=user_instances_only,
             ensure_rgb=ensure_rgb,
             ensure_grayscale=ensure_grayscale,
+            imagenet_normalize=imagenet_normalize,
             augmentation_config=augmentation_config,
             scale=scale,
             apply_aug=apply_aug,
@@ -1405,6 +1444,12 @@ class SingleInstanceDataset(BaseDataset):
             sigma=self.confmap_head_config.sigma,
             output_stride=self.confmap_head_config.output_stride,
         )
+
+        # apply ImageNet normalization if enabled (requires RGB images)
+        if self.imagenet_normalize:
+            if sample["image"].shape[-3] != 3:
+                raise ValueError("ImageNet normalization requires RGB images (3 channels)")
+            sample["image"] = apply_imagenet_normalization(sample["image"])
 
         sample["confidence_maps"] = confidence_maps
         sample["labels_idx"] = labels_idx
@@ -1567,6 +1612,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=config.data_config.augmentation_config,
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
@@ -1589,6 +1635,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
@@ -1613,6 +1660,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=config.data_config.augmentation_config,
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
@@ -1635,6 +1683,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
@@ -1664,6 +1713,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=config.data_config.augmentation_config,
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
@@ -1687,6 +1737,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
@@ -1717,6 +1768,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=config.data_config.augmentation_config,
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
@@ -1740,6 +1792,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
@@ -1771,6 +1824,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=config.data_config.augmentation_config,
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
@@ -1793,6 +1847,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
@@ -1816,6 +1871,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=config.data_config.augmentation_config,
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
@@ -1837,6 +1893,7 @@ def get_train_val_datasets(
             user_instances_only=config.data_config.user_instances_only,
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+            imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
             augmentation_config=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,

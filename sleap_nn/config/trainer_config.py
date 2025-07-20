@@ -27,6 +27,7 @@ class DataLoaderConfig:
     batch_size: int = 1
     shuffle: bool = False
     num_workers: int = 0
+    pin_memory: bool = True
 
 
 @define
