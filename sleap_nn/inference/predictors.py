@@ -1289,7 +1289,7 @@ class SingleInstancePredictor(Predictor):
                         if self.data_config.max_width is not None
                         else self.confmap_config.data_config.preprocessing.max_width
                     ),
-                    "imagenet_normalize": self.confmap_config.data_config.preprocessing.imagenet_normalize,
+                    "imagenet_normalize": self.confmap_config.data_config.preprocessing.get("imagenet_normalize", False),
                 }
             )
 
