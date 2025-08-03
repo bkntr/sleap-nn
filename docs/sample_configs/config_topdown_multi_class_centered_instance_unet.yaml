@@ -1,8 +1,6 @@
 data_config:
   train_labels_path: 
-    - minimal_instance.pkg.slp
   val_labels_path: 
-    - minimal_instance.pkg.slp
   validation_fraction: 0.1
   test_file_path: null
   provider: LabelsReader
@@ -17,7 +15,9 @@ data_config:
     max_height: null
     max_width: null
     scale: 1.0
-    crop_hw: null
+    crop_hw:
+      - 160
+      - 160
     min_crop_size: 100
   use_augmentations_train: true
   augmentation_config:
@@ -55,39 +55,42 @@ data_config:
   skeletons: null
 model_config:
   init_weights: xavier
-  pre_trained_weights: null #   pre_trained_weights: ConvNeXt_Tiny_Weights (for convnext)
+  pre_trained_weights: null
   pretrained_backbone_weights: null
   pretrained_head_weights: null
   backbone_config:
-    unet: null
-    convnext:
+    unet:
       in_channels: 1
-      model_type: tiny
-      arch: 
       kernel_size: 3
-      filters_rate: 2
+      filters: 16
+      filters_rate: 1.5
+      max_stride: 8
+      stem_stride: null
+      middle_block: true
+      up_interpolate: true
+      stacks: 1
       convs_per_block: 2
-      up_interpolate: True
-      stem_patch_kernel: 4
-      stem_patch_stride: 2
-      max_stride: 16
       output_stride: 2
+    convnext: null
     swint: null
   head_configs:
     single_instance:
     centroid:
-    centered_instance: null
-    bottomup:
+    centered_instance:
+    multi_class_topdown:
       confmaps:
-          part_names:
-          sigma: 1.5
-          output_stride: 2
-          loss_weight: 1.0
-      pafs:
-          edges:
-          sigma: 50
-          output_stride: 4
-          loss_weight: 1.0
+        sigma: 1.5
+        output_stride: 2
+        anchor_part:
+        part_names: 
+      class_vectors:
+        classes:
+        num_fc_layers: 3
+        num_fc_units: 64
+        global_pool: true
+        output_stride: 16
+        loss_weight: 0.01
+    bottomup: null
   total_params: null
 trainer_config:
   train_data_loader:
@@ -110,11 +113,11 @@ trainer_config:
   train_steps_per_epoch:
   visualize_preds_during_training: true
   keep_viz: false
-  max_epochs: 40
+  max_epochs: 30
   seed: 0
   use_wandb: false
   save_ckpt: true
-  save_ckpt_path: minimal_instance_bottomup
+  save_ckpt_path:
   resume_ckpt_path: null
   optimizer_name: Adam
   optimizer:

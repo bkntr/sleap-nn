@@ -1,8 +1,6 @@
 data_config:
   train_labels_path: 
-    - minimal_instance.pkg.slp
   val_labels_path: 
-    - minimal_instance.pkg.slp
   validation_fraction: 0.1
   test_file_path: null
   provider: LabelsReader
@@ -17,9 +15,7 @@ data_config:
     max_height: null
     max_width: null
     scale: 1.0
-    crop_hw:
-      - 160
-      - 160
+    crop_hw: null
     min_crop_size: 100
   use_augmentations_train: true
   augmentation_config:
@@ -57,7 +53,7 @@ data_config:
   skeletons: null
 model_config:
   init_weights: xavier
-  pre_trained_weights: null
+  pre_trained_weights: null #   pre_trained_weights: ConvNeXt_Tiny_Weights (for convnext)
   pretrained_backbone_weights: null
   pretrained_head_weights: null
   backbone_config:
@@ -78,13 +74,18 @@ model_config:
   head_configs:
     single_instance:
     centroid:
-    centered_instance:
+    centered_instance: null
+    bottomup:
       confmaps:
-        sigma: 1.5
-        output_stride: 2
-        anchor_part:
-        part_names: 
-    bottomup: null
+          part_names:
+          sigma: 1.5
+          output_stride: 2
+          loss_weight: 1.0
+      pafs:
+          edges:
+          sigma: 50
+          output_stride: 4
+          loss_weight: 1.0
   total_params: null
 trainer_config:
   train_data_loader:
@@ -107,11 +108,11 @@ trainer_config:
   train_steps_per_epoch:
   visualize_preds_during_training: true
   keep_viz: false
-  max_epochs: 30
+  max_epochs: 40
   seed: 0
   use_wandb: false
   save_ckpt: true
-  save_ckpt_path: minimal_instance_centered_instance
+  save_ckpt_path:
   resume_ckpt_path: null
   optimizer_name: Adam
   optimizer:

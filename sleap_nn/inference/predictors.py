@@ -48,6 +48,8 @@ from sleap_nn.inference.topdown import (
 )
 from sleap_nn.inference.utils import get_skeleton_from_config
 from sleap_nn.tracking.tracker import Tracker, run_tracker, connect_single_breaks
+from sleap_nn.legacy_models import load_legacy_model
+from sleap_nn.config.training_job_config import TrainingJobConfig
 import rich
 from rich.progress import (
     Progress,
@@ -77,27 +79,30 @@ class Predictor(ABC):
     This is the base predictor class for different types of models.
 
     Attributes:
-        preprocess: Only for VideoReader provider. True if preprocessing (reszizing and
+        preprocess: True if preprocessing (resizing and
             apply_pad_to_stride) should be applied on the frames read in the video reader.
             Default: True.
-        preprocess_config: Preprocessing config with keys: [`batch_size`,
-            `scale`, `ensure_rgb`, `ensure_grayscale`, `max_stride`]. Default: {"batch_size": 4, "scale": 1.0,
-            "ensure_rgb": False, "ensure_grayscale": False, "max_stride": 1}
+        preprocess_config: Preprocessing config with keys: [`scale`,
+            `ensure_rgb`, `ensure_grayscale`, `scale`, `max_height`, `max_width`, `crop_hw`]. Default: {"scale": 1.0,
+            "ensure_rgb": False, "ensure_grayscale": False, "max_height": None, "max_width": None, "crop_hw": None}
         pipeline: If provider is LabelsReader, pipeline is a `DataLoader` object. If provider
             is VideoReader, pipeline is an instance of `sleap_nn.data.providers.VideoReader`
             class. Default: None.
         inference_model: Instance of one of the inference models ["TopDownInferenceModel",
             "SingleInstanceInferenceModel", "BottomUpInferenceModel"]. Default: None.
         instances_key: If `True`, then instances are appended to the data samples.
+        max_stride: The maximum stride of the backbone network, as specified in the model's
+            `backbone_config`. This determines the downsampling factor applied by the backbone,
+            and is used to ensure that input images are padded or resized to be compatible
+            with the model's architecture. Default: 16.
     """
 
     preprocess: bool = True
     preprocess_config: dict = {
-        "batch_size": 4,
         "scale": 1.0,
         "ensure_rgb": False,
         "ensure_grayscale": False,
-        "max_stride": 1,
+        "crop_hw": None,
         "max_height": None,
         "max_width": None,
     }
@@ -108,6 +113,7 @@ class Predictor(ABC):
         ]
     ] = None
     instances_key: bool = False
+    max_stride: int = 16
 
     @classmethod
     def from_model_paths(
@@ -116,19 +122,20 @@ class Predictor(ABC):
         backbone_ckpt_path: Optional[str] = None,
         head_ckpt_path: Optional[str] = None,
         peak_threshold: Union[float, List[float]] = 0.2,
-        integral_refinement: str = None,
+        integral_refinement: str = "integral",
         integral_patch_size: int = 5,
         batch_size: int = 4,
         max_instances: Optional[int] = None,
         return_confmaps: bool = False,
         device: str = "cpu",
         preprocess_config: Optional[OmegaConf] = None,
+        anchor_part: Optional[str] = None,
     ) -> "Predictor":
         """Create the appropriate `Predictor` subclass from from the ckpt path.
 
         Args:
-            model_paths: (List[str]) List of paths to the directory where the best.ckpt
-                and training_config.yaml are saved.
+            model_paths: (List[str]) List of paths to the directory where the best.ckpt (or from SLEAP <=1.4 best_model.h5)
+                and training_config.yaml (or from SLEAP <=1.4 training_config.json) are saved.
             backbone_ckpt_path: (str) To run inference on any `.ckpt` other than `best.ckpt`
                 from the `model_paths` dir, the path to the `.ckpt` file should be passed here.
             head_ckpt_path: (str) Path to `.ckpt` file if a different set of head layer weights
@@ -141,7 +148,7 @@ class Predictor(ABC):
                 centered-instance model peak finding.
             integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
                 If `"integral"`, peaks will be refined with integral regression.
-                Default: None.
+                Default: "integral".
             integral_patch_size: (int) Size of patches to crop around each rough peak as an
                 integer scalar. Default: 5.
             batch_size: (int) Number of samples per batch. Default: 4.
@@ -153,6 +160,8 @@ class Predictor(ABC):
                 Default: "cpu"
             preprocess_config: (OmegaConf) OmegaConf object with keys as the parameters
                 in the `data_config.preprocessing` section.
+            anchor_part: (str) The name of the node to use as the anchor for the centroid. If not
+                provided, the anchor part in the `training_config.yaml` is used instead. Default: None.
 
         Returns:
             A subclass of `Predictor`.
@@ -161,9 +170,24 @@ class Predictor(ABC):
             `MoveNetPredictor`, `TopDownMultiClassPredictor`,
             `BottomUpMultiClassPredictor`.
         """
-        model_configs = [
-            OmegaConf.load(f"{Path(c)}/training_config.yaml") for c in model_paths
-        ]
+        model_configs = []
+        for model_path in model_paths:
+            path = Path(model_path)
+            if path / "training_config.yaml" in path.iterdir():
+                model_configs.append(
+                    OmegaConf.load((path / "training_config.yaml").as_posix())
+                )
+            elif path / "training_config.json" in path.iterdir():
+                model_configs.append(
+                    TrainingJobConfig.load_sleap_config(
+                        (path / "training_config.json").as_posix()
+                    )
+                )
+            else:
+                raise ValueError(
+                    f"Could not find training_config.yaml or training_config.json in {model_path}"
+                )
+
         model_names = []
         for config in model_configs:
             model_names.append(get_model_type_from_cfg(config=config))
@@ -205,6 +229,7 @@ class Predictor(ABC):
                     return_confmaps=return_confmaps,
                     device=device,
                     preprocess_config=preprocess_config,
+                    anchor_part=anchor_part,
                 )
             if "centered_instance" in model_names:
                 confmap_ckpt_path = model_paths[model_names.index("centered_instance")]
@@ -222,6 +247,7 @@ class Predictor(ABC):
                     return_confmaps=return_confmaps,
                     device=device,
                     preprocess_config=preprocess_config,
+                    anchor_part=anchor_part,
                 )
             elif "multi_class_topdown" in model_names:
                 confmap_ckpt_path = model_paths[
@@ -241,6 +267,7 @@ class Predictor(ABC):
                     return_confmaps=return_confmaps,
                     device=device,
                     preprocess_config=preprocess_config,
+                    anchor_part=anchor_part,
                 )
 
         elif "bottomup" in model_names:
@@ -285,11 +312,6 @@ class Predictor(ABC):
     @abstractmethod
     def from_trained_models(cls, *args, **kwargs):
         """Initialize the Predictor class for certain type of model."""
-
-    @property
-    @abstractmethod
-    def data_config(self) -> OmegaConf:
-        """Get the data parameters from the config."""
 
     @abstractmethod
     def make_pipeline(
@@ -338,7 +360,6 @@ class Predictor(ABC):
         # Loop over data batches.
         self.pipeline.start()
         total_frames = self.pipeline.total_len()
-        batch_size = self.preprocess_config["batch_size"]
         done = False
 
         with Progress(
@@ -359,7 +380,6 @@ class Predictor(ABC):
             last_report = time()
 
             done = False
-            batch_size = self.preprocess_config["batch_size"]
             while not done:
                 imgs = []
                 fidxs = []
@@ -367,7 +387,7 @@ class Predictor(ABC):
                 org_szs = []
                 instances = []
                 eff_scales = []
-                for _ in range(batch_size):
+                for _ in range(self.batch_size):
                     frame = self.pipeline.frame_buffer.get()
                     if frame["image"] is None:
                         done = True
@@ -430,9 +450,7 @@ class Predictor(ABC):
                                 )
                             else:
                                 ex["image"] = resize_image(ex["image"], scale)
-                        ex["image"] = apply_pad_to_stride(
-                            ex["image"], self.preprocess_config["max_stride"]
-                        )
+                        ex["image"] = apply_pad_to_stride(ex["image"], self.max_stride)
                     outputs_list = self.inference_model(ex)
                     if outputs_list is not None:
                         for output in outputs_list:
@@ -441,7 +459,7 @@ class Predictor(ABC):
 
                     # Advance progress
                     num_frames = (
-                        len(ex["frame_idx"]) if "frame_idx" in ex else batch_size
+                        len(ex["frame_idx"]) if "frame_idx" in ex else self.batch_size
                     )
                     progress.update(task, advance=num_frames)
 
@@ -514,7 +532,7 @@ class TopDownPredictor(Predictor):
                 centered-instance model peak finding.
         integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
             If `"integral"`, peaks will be refined with integral regression.
-            Default: None.
+            Default: "integral".
         integral_patch_size: (int) Size of patches to crop around each rough peak as an
             integer scalar. Default: 5.
         batch_size: (int) Number of samples per batch. Default: 4.
@@ -530,7 +548,11 @@ class TopDownPredictor(Predictor):
             detections over time. Predicted instances will not be assigned to tracks if
             if this is `None`.
         anchor_part: (str) The name of the node to use as the anchor for the centroid. If not
-            provided, the anchor part in the `training_config.yaml` is used instead.
+            provided, the anchor part in the `training_config.yaml` is used instead. Default: None.
+        max_stride: The maximum stride of the backbone network, as specified in the model's
+            `backbone_config`. This determines the downsampling factor applied by the backbone,
+            and is used to ensure that input images are padded or resized to be compatible
+            with the model's architecture. Default: 16.
 
     """
 
@@ -543,7 +565,7 @@ class TopDownPredictor(Predictor):
     videos: Optional[List[sio.Video]] = None
     skeletons: Optional[List[sio.Skeleton]] = None
     peak_threshold: Union[float, List[float]] = 0.2
-    integral_refinement: str = None
+    integral_refinement: str = "integral"
     integral_patch_size: int = 5
     batch_size: int = 4
     max_instances: Optional[int] = None
@@ -552,6 +574,7 @@ class TopDownPredictor(Predictor):
     preprocess_config: Optional[OmegaConf] = None
     tracker: Optional[Tracker] = None
     anchor_part: Optional[str] = None
+    max_stride: int = 16
 
     def _initialize_inference_model(self):
         """Initialize the inference model from the trained models and configuration."""
@@ -567,19 +590,18 @@ class TopDownPredictor(Predictor):
             centroid_peak_threshold = self.peak_threshold
             centered_instance_peak_threshold = self.peak_threshold
 
-        if self.data_config.crop_hw is None and self.confmap_config is not None:
-            self.data_config.crop_hw = (
-                self.confmap_config.data_config.preprocessing.crop_hw
-            )
-
         if self.anchor_part is not None:
             anchor_ind = self.skeletons[0].node_names.index(self.anchor_part)
         else:
             anch_pt = None
             if self.centroid_config is not None:
-                anch_pt = self.centroid_config.model_config.head_configs.centroid.confmaps.anchor_part
-            elif self.confmap_config is not None:
-                anch_pt = self.confmap_config.model_config.head_configs.centered_instance.confmaps.anchor_part
+                anch_pt = (
+                    self.centroid_config.model_config.head_configs.centroid.confmaps.anchor_part
+                )
+            if self.confmap_config is not None:
+                anch_pt = (
+                    self.confmap_config.model_config.head_configs.centered_instance.confmaps.anchor_part
+                )
             anchor_ind = (
                 self.skeletons[0].node_names.index(anch_pt)
                 if anch_pt is not None
@@ -589,7 +611,7 @@ class TopDownPredictor(Predictor):
         if self.centroid_config is None:
             centroid_crop_layer = CentroidCrop(
                 use_gt_centroids=True,
-                crop_hw=self.data_config.crop_hw,
+                crop_hw=self.preprocess_config.crop_hw,
                 anchor_ind=anchor_ind,
                 return_crops=return_crops,
             )
@@ -610,7 +632,7 @@ class TopDownPredictor(Predictor):
                 max_instances=self.max_instances,
                 max_stride=max_stride,
                 input_scale=self.centroid_config.data_config.preprocessing.scale,
-                crop_hw=self.data_config.crop_hw,
+                crop_hw=self.preprocess_config.crop_hw,
                 use_gt_centroids=False,
             )
 
@@ -646,17 +668,6 @@ class TopDownPredictor(Predictor):
             centroid_crop=centroid_crop_layer, instance_peaks=instance_peaks_layer
         )
 
-    @property
-    def data_config(self) -> OmegaConf:
-        """Returns data config section from the overall config."""
-        if self.centroid_config:
-            data_config = self.centroid_config.data_config.preprocessing
-        else:
-            data_config = self.confmap_config.data_config.preprocessing
-        if self.preprocess_config is None:
-            return data_config
-        return self.preprocess_config
-
     @classmethod
     def from_trained_models(
         cls,
@@ -665,19 +676,20 @@ class TopDownPredictor(Predictor):
         backbone_ckpt_path: Optional[str] = None,
         head_ckpt_path: Optional[str] = None,
         peak_threshold: float = 0.2,
-        integral_refinement: str = None,
+        integral_refinement: str = "integral",
         integral_patch_size: int = 5,
         batch_size: int = 4,
         max_instances: Optional[int] = None,
         return_confmaps: bool = False,
         device: str = "cpu",
         preprocess_config: Optional[OmegaConf] = None,
+        anchor_part: Optional[str] = None,
     ) -> "TopDownPredictor":
         """Create predictor from saved models.
 
         Args:
-            centroid_ckpt_path: Path to a centroid ckpt dir with model.ckpt and config.yaml.
-            confmap_ckpt_path: Path to a centroid ckpt dir with model.ckpt and config.yaml.
+            centroid_ckpt_path: Path to a centroid ckpt dir with best.ckpt (or from SLEAP <=1.4 best_model.h5)  and training_config.yaml (or from SLEAP <=1.4 training_config.json).
+            confmap_ckpt_path: Path to a centered-instance ckpt dir with best.ckpt (or from SLEAP <=1.4 best_model.h5) and training_config.yaml (or from SLEAP <=1.4 training_config.json).
             backbone_ckpt_path: (str) To run inference on any `.ckpt` other than `best.ckpt`
                 from the `model_paths` dir, the path to the `.ckpt` file should be passed here.
             head_ckpt_path: (str) Path to `.ckpt` file if a different set of head layer weights
@@ -687,7 +699,7 @@ class TopDownPredictor(Predictor):
                 this will be ignored. Default: 0.2
             integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
                 If `"integral"`, peaks will be refined with integral regression.
-                Default: None.
+                Default: "integral".
             integral_patch_size: (int) Size of patches to crop around each rough peak as an
                 integer scalar. Default: 5.
             batch_size: (int) Number of samples per batch. Default: 4.
@@ -698,7 +710,9 @@ class TopDownPredictor(Predictor):
                 ("cpu", "cuda", "mkldnn", "opengl", "opencl", "ideep", "hip", "msnpu").
                 Default: "cpu"
             preprocess_config: (OmegaConf) OmegaConf object with keys as the parameters
-                in the `data_config.preprocessing` section and the `anchor_part`.
+                in the `data_config.preprocessing` section.
+            anchor_part: (str) The name of the node to use as the anchor for the centroid. If not
+                provided, the anchor part in the `training_config.yaml` is used instead. Default: None.
 
         Returns:
             An instance of `TopDownPredictor` with the loaded models.
@@ -710,12 +724,25 @@ class TopDownPredictor(Predictor):
         centered_instance_backbone_type = None
         centroid_backbone_type = None
         if centroid_ckpt_path is not None:
+            is_sleap_ckpt = False
             # Load centroid model.
-            centroid_config = OmegaConf.load(
-                f"{centroid_ckpt_path}/training_config.yaml"
-            )
+            if (
+                Path(centroid_ckpt_path) / "training_config.yaml"
+                in Path(centroid_ckpt_path).iterdir()
+            ):
+                centroid_config = OmegaConf.load(
+                    (Path(centroid_ckpt_path) / "training_config.yaml").as_posix()
+                )
+            elif (
+                Path(centroid_ckpt_path) / "training_config.json"
+                in Path(centroid_ckpt_path).iterdir()
+            ):
+                is_sleap_ckpt = True
+                centroid_config = TrainingJobConfig.load_sleap_config(
+                    (Path(centroid_ckpt_path) / "training_config.json").as_posix()
+                )
+
             skeletons = get_skeleton_from_config(centroid_config.data_config.skeletons)
-            ckpt_path = f"{centroid_ckpt_path}/best.ckpt"
 
             # check which backbone architecture
             for k, v in centroid_config.model_config.backbone_config.items():
@@ -723,14 +750,32 @@ class TopDownPredictor(Predictor):
                     centroid_backbone_type = k
                     break
 
-            centroid_model = CentroidLightningModule.load_from_checkpoint(
-                checkpoint_path=ckpt_path,
-                config=centroid_config,
-                skeletons=skeletons,
-                model_type="centroid",
-                backbone_type=centroid_backbone_type,
-                map_location=device,
-            )
+            if not is_sleap_ckpt:
+                ckpt_path = (Path(centroid_ckpt_path) / "best.ckpt").as_posix()
+                centroid_model = CentroidLightningModule.load_from_checkpoint(
+                    checkpoint_path=ckpt_path,
+                    config=centroid_config,
+                    skeletons=skeletons,
+                    model_type="centroid",
+                    backbone_type=centroid_backbone_type,
+                    map_location=device,
+                )
+            else:
+                # Load the converted model
+                centroid_converted_model = load_legacy_model(
+                    model_dir=f"{centroid_ckpt_path}"
+                )
+                centroid_model = CentroidLightningModule(
+                    config=centroid_config,
+                    backbone_type=centroid_backbone_type,
+                    model_type="centroid",
+                )
+
+                centroid_model.eval()
+                centroid_model.model = centroid_converted_model
+                centroid_model.to(device)
+
+            centroid_model.eval()
 
             if backbone_ckpt_path is not None and head_ckpt_path is not None:
                 logger.info(f"Loading backbone weights from `{backbone_ckpt_path}` ...")
@@ -770,23 +815,62 @@ class TopDownPredictor(Predictor):
             centroid_model = None
 
         if confmap_ckpt_path is not None:
+            is_sleap_ckpt = False
             # Load confmap model.
-            confmap_config = OmegaConf.load(f"{confmap_ckpt_path}/training_config.yaml")
+            if (
+                Path(confmap_ckpt_path) / "training_config.yaml"
+                in Path(confmap_ckpt_path).iterdir()
+            ):
+                confmap_config = OmegaConf.load(
+                    (Path(confmap_ckpt_path) / "training_config.yaml").as_posix()
+                )
+            elif (
+                Path(confmap_ckpt_path) / "training_config.json"
+                in Path(confmap_ckpt_path).iterdir()
+            ):
+                is_sleap_ckpt = True
+                confmap_config = TrainingJobConfig.load_sleap_config(
+                    (Path(confmap_ckpt_path) / "training_config.json").as_posix()
+                )
+
             skeletons = get_skeleton_from_config(confmap_config.data_config.skeletons)
-            ckpt_path = f"{confmap_ckpt_path}/best.ckpt"
 
             # check which backbone architecture
             for k, v in confmap_config.model_config.backbone_config.items():
                 if v is not None:
                     centered_instance_backbone_type = k
                     break
-            confmap_model = TopDownCenteredInstanceLightningModule.load_from_checkpoint(
-                checkpoint_path=ckpt_path,
-                config=confmap_config,
-                model_type="centered_instance",
-                backbone_type=centered_instance_backbone_type,
-                map_location=device,
-            )
+
+            if not is_sleap_ckpt:
+                ckpt_path = (Path(confmap_ckpt_path) / "best.ckpt").as_posix()
+                confmap_model = (
+                    TopDownCenteredInstanceLightningModule.load_from_checkpoint(
+                        checkpoint_path=ckpt_path,
+                        config=confmap_config,
+                        model_type="centered_instance",
+                        backbone_type=centered_instance_backbone_type,
+                        map_location=device,
+                    )
+                )
+            else:
+                # Load the converted model
+                confmap_converted_model = load_legacy_model(
+                    model_dir=f"{confmap_ckpt_path}"
+                )
+
+                # Create a new LightningModule with the converted model
+                confmap_model = TopDownCenteredInstanceLightningModule(
+                    config=confmap_config,
+                    backbone_type=centered_instance_backbone_type,
+                    model_type="centered_instance",
+                )
+
+                confmap_model.eval()
+                confmap_model.model = confmap_converted_model
+                confmap_model.to(device)
+
+            confmap_model.eval()
+
             if backbone_ckpt_path is not None and head_ckpt_path is not None:
                 logger.info(f"Loading backbone weights from `{backbone_ckpt_path}` ...")
                 ckpt = torch.load(
@@ -824,6 +908,66 @@ class TopDownPredictor(Predictor):
             confmap_config = None
             confmap_model = None
 
+        if centroid_config is not None:
+            preprocess_config["scale"] = (
+                centroid_config.data_config.preprocessing.scale
+                if preprocess_config["scale"] is None
+                else preprocess_config["scale"]
+            )
+            preprocess_config["ensure_rgb"] = (
+                centroid_config.data_config.preprocessing.ensure_rgb
+                if preprocess_config["ensure_rgb"] is None
+                else preprocess_config["ensure_rgb"]
+            )
+            preprocess_config["ensure_grayscale"] = (
+                centroid_config.data_config.preprocessing.ensure_grayscale
+                if preprocess_config["ensure_grayscale"] is None
+                else preprocess_config["ensure_grayscale"]
+            )
+            preprocess_config["max_height"] = (
+                centroid_config.data_config.preprocessing.max_height
+                if preprocess_config["max_height"] is None
+                else preprocess_config["max_height"]
+            )
+            preprocess_config["max_width"] = (
+                centroid_config.data_config.preprocessing.max_width
+                if preprocess_config["max_width"] is None
+                else preprocess_config["max_width"]
+            )
+
+        else:
+            preprocess_config["scale"] = (
+                confmap_config.data_config.preprocessing.scale
+                if preprocess_config["scale"] is None
+                else preprocess_config["scale"]
+            )
+            preprocess_config["ensure_rgb"] = (
+                confmap_config.data_config.preprocessing.ensure_rgb
+                if preprocess_config["ensure_rgb"] is None
+                else preprocess_config["ensure_rgb"]
+            )
+            preprocess_config["ensure_grayscale"] = (
+                confmap_config.data_config.preprocessing.ensure_grayscale
+                if preprocess_config["ensure_grayscale"] is None
+                else preprocess_config["ensure_grayscale"]
+            )
+            preprocess_config["max_height"] = (
+                confmap_config.data_config.preprocessing.max_height
+                if preprocess_config["max_height"] is None
+                else preprocess_config["max_height"]
+            )
+            preprocess_config["max_width"] = (
+                confmap_config.data_config.preprocessing.max_width
+                if preprocess_config["max_width"] is None
+                else preprocess_config["max_width"]
+            )
+
+        preprocess_config["crop_hw"] = (
+            confmap_config.data_config.preprocessing.crop_hw
+            if preprocess_config["crop_hw"] is None and confmap_config is not None
+            else preprocess_config["crop_hw"]
+        )
+
         # create an instance of TopDownPredictor class
         obj = cls(
             centroid_config=centroid_config,
@@ -841,7 +985,16 @@ class TopDownPredictor(Predictor):
             return_confmaps=return_confmaps,
             device=device,
             preprocess_config=preprocess_config,
-            anchor_part=preprocess_config["anchor_part"],
+            anchor_part=anchor_part,
+            max_stride=(
+                centroid_config.model_config.backbone_config[
+                    f"{centroid_backbone_type}"
+                ]["max_stride"]
+                if centroid_config is not None
+                else confmap_config.model_config.backbone_config[
+                    f"{centered_instance_backbone_type}"
+                ]["max_stride"]
+            ),
         )
 
         obj._initialize_inference_model()
@@ -875,45 +1028,11 @@ class TopDownPredictor(Predictor):
             This method initiates the reader class (doesn't return a pipeline) and the
             Thread is started in Predictor._predict_generator() method.
         """
-        if self.centroid_config is not None:
-            max_stride = self.centroid_config.model_config.backbone_config[
-                f"{self.centroid_backbone_type}"
-            ]["max_stride"]
-            scale = self.centroid_config.data_config.preprocessing.scale
-            max_height = self.centroid_config.data_config.preprocessing.max_height
-            max_width = self.centroid_config.data_config.preprocessing.max_width
-        else:
-            max_stride = self.confmap_config.model_config.backbone_config[
-                f"{self.centered_instance_backbone_type}"
-            ]["max_stride"]
-            scale = self.confmap_config.data_config.preprocessing.scale
-            max_height = self.confmap_config.data_config.preprocessing.max_height
-            max_width = self.confmap_config.data_config.preprocessing.max_width
-
         # LabelsReader provider
         if data_path.endswith(".slp") and video_index is None:
             provider = LabelsReader
 
             self.preprocess = False
-            self.preprocess_config = OmegaConf.create(
-                {
-                    "batch_size": self.batch_size,
-                    "scale": scale,
-                    "ensure_rgb": self.data_config.ensure_rgb,
-                    "ensure_grayscale": self.data_config.ensure_grayscale,
-                    "max_stride": max_stride,
-                    "max_height": (
-                        self.data_config.max_height
-                        if self.data_config.max_height is not None
-                        else max_height
-                    ),
-                    "max_width": (
-                        self.data_config.max_width
-                        if self.data_config.max_width is not None
-                        else max_width
-                    ),
-                }
-            )
 
             self.pipeline = provider.from_filename(
                 filename=data_path,
@@ -935,29 +1054,6 @@ class TopDownPredictor(Predictor):
                 raise ValueError(message)
 
             self.preprocess = False
-            self.preprocess_config = OmegaConf.create(
-                {
-                    "batch_size": self.batch_size,
-                    "scale": self.centroid_config.data_config.preprocessing.scale,
-                    "ensure_rgb": self.data_config.ensure_rgb,
-                    "ensure_grayscale": self.data_config.ensure_grayscale,
-                    "max_stride": (
-                        self.centroid_config.model_config.backbone_config[
-                            f"{self.centroid_backbone_type}"
-                        ]["max_stride"]
-                    ),
-                    "max_height": (
-                        self.data_config.max_height
-                        if self.data_config.max_height is not None
-                        else max_height
-                    ),
-                    "max_width": (
-                        self.data_config.max_width
-                        if self.data_config.max_width is not None
-                        else max_width
-                    ),
-                }
-            )
 
             if data_path.endswith(".slp") and video_index is not None:
                 labels = sio.load_slp(data_path)
@@ -1079,7 +1175,7 @@ class SingleInstancePredictor(Predictor):
             this will be ignored. Default: 0.2
         integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
             If `"integral"`, peaks will be refined with integral regression.
-            Default: None.
+            Default: "integral".
         integral_patch_size: (int) Size of patches to crop around each rough peak as an
             integer scalar. Default: 5.
         batch_size: (int) Number of samples per batch. Default: 4.
@@ -1090,6 +1186,10 @@ class SingleInstancePredictor(Predictor):
             Default: "cpu"
         preprocess_config: (OmegaConf) OmegaConf object with keys as the parameters
                 in the `data_config.preprocessing` section.
+        max_stride: The maximum stride of the backbone network, as specified in the model's
+            `backbone_config`. This determines the downsampling factor applied by the backbone,
+            and is used to ensure that input images are padded or resized to be compatible
+            with the model's architecture. Default: 16.
 
     """
 
@@ -1099,12 +1199,13 @@ class SingleInstancePredictor(Predictor):
     videos: Optional[List[sio.Video]] = attrs.field(default=None)
     skeletons: Optional[List[sio.Skeleton]] = attrs.field(default=None)
     peak_threshold: float = 0.2
-    integral_refinement: str = None
+    integral_refinement: str = "integral"
     integral_patch_size: int = 5
     batch_size: int = 4
     return_confmaps: bool = False
     device: str = "cpu"
     preprocess_config: Optional[OmegaConf] = None
+    max_stride: int = 16
 
     def _initialize_inference_model(self):
         """Initialize the inference model from the trained models and configuration."""
@@ -1115,16 +1216,8 @@ class SingleInstancePredictor(Predictor):
             refinement=self.integral_refinement,
             integral_patch_size=self.integral_patch_size,
             return_confmaps=self.return_confmaps,
-            input_scale=self.confmap_config.data_config.preprocessing.scale,
+            input_scale=self.confmap_config.data_config.preprocessing.scale,  # TODO
         )
-
-    @property
-    def data_config(self) -> OmegaConf:
-        """Returns data config section from the overall config."""
-        data_config = self.confmap_config.data_config.preprocessing
-        if self.preprocess_config is None:
-            return data_config
-        return self.preprocess_config
 
     @classmethod
     def from_trained_models(
@@ -1133,17 +1226,18 @@ class SingleInstancePredictor(Predictor):
         backbone_ckpt_path: Optional[str] = None,
         head_ckpt_path: Optional[str] = None,
         peak_threshold: float = 0.2,
-        integral_refinement: str = None,
+        integral_refinement: str = "integral",
         integral_patch_size: int = 5,
         batch_size: int = 4,
         return_confmaps: bool = False,
         device: str = "cpu",
         preprocess_config: Optional[OmegaConf] = None,
+        max_stride: int = 16,
     ) -> "SingleInstancePredictor":
         """Create predictor from saved models.
 
         Args:
-            confmap_ckpt_path: Path to a centroid ckpt dir with model.ckpt and config.yaml.
+            confmap_ckpt_path: Path to a single instance ckpt dir with best.ckpt (or from SLEAP <=1.4 best_model.h5) and training_config.yaml (or from SLEAP <=1.4 training_config.json).
             backbone_ckpt_path: (str) To run inference on any `.ckpt` other than `best.ckpt`
                 from the `model_paths` dir, the path to the `.ckpt` file should be passed here.
             head_ckpt_path: (str) Path to `.ckpt` file if a different set of head layer weights
@@ -1153,7 +1247,7 @@ class SingleInstancePredictor(Predictor):
                 this will be ignored. Default: 0.2
             integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
                 If `"integral"`, peaks will be refined with integral regression.
-                Default: None.
+                Default: "integral".
             integral_patch_size: (int) Size of patches to crop around each rough peak as an
                 integer scalar. Default: 5.
             batch_size: (int) Number of samples per batch. Default: 4.
@@ -1164,14 +1258,31 @@ class SingleInstancePredictor(Predictor):
                 Default: "cpu"
             preprocess_config: (OmegaConf) OmegaConf object with keys as the parameters
                 in the `data_config.preprocessing` section.
+            max_stride: The maximum stride of the backbone network, as specified in the model's
+                `backbone_config`. This determines the downsampling factor applied by the backbone,
+                and is used to ensure that input images are padded or resized to be compatible
+                with the model's architecture. Default: 16.
 
         Returns:
             An instance of `SingleInstancePredictor` with the loaded models.
 
         """
-        confmap_config = OmegaConf.load(f"{confmap_ckpt_path}/training_config.yaml")
-        skeletons = get_skeleton_from_config(confmap_config.data_config.skeletons)
-        ckpt_path = f"{confmap_ckpt_path}/best.ckpt"
+        is_sleap_ckpt = False
+        if (
+            Path(confmap_ckpt_path) / "training_config.yaml"
+            in Path(confmap_ckpt_path).iterdir()
+        ):
+            confmap_config = OmegaConf.load(
+                (Path(confmap_ckpt_path) / "training_config.yaml").as_posix()
+            )
+        elif (
+            Path(confmap_ckpt_path) / "training_config.json"
+            in Path(confmap_ckpt_path).iterdir()
+        ):
+            is_sleap_ckpt = True
+            confmap_config = TrainingJobConfig.load_sleap_config(
+                (Path(confmap_ckpt_path) / "training_config.json").as_posix()
+            )
 
         # check which backbone architecture
         for k, v in confmap_config.model_config.backbone_config.items():
@@ -1179,13 +1290,32 @@ class SingleInstancePredictor(Predictor):
                 backbone_type = k
                 break
 
-        confmap_model = SingleInstanceLightningModule.load_from_checkpoint(
-            checkpoint_path=ckpt_path,
-            config=confmap_config,
-            model_type="single_instance",
-            backbone_type=backbone_type,
-            map_location=device,
-        )
+        if not is_sleap_ckpt:
+            ckpt_path = (Path(confmap_ckpt_path) / "best.ckpt").as_posix()
+            confmap_model = SingleInstanceLightningModule.load_from_checkpoint(
+                checkpoint_path=ckpt_path,
+                config=confmap_config,
+                model_type="single_instance",
+                backbone_type=backbone_type,
+                map_location=device,
+            )
+        else:
+            confmap_converted_model = load_legacy_model(
+                model_dir=f"{confmap_ckpt_path}"
+            )
+            confmap_model = SingleInstanceLightningModule(
+                config=confmap_config,
+                backbone_type=backbone_type,
+                model_type="single_instance",
+            )
+            confmap_model.eval()
+            confmap_model.model = confmap_converted_model
+            confmap_model.to(device)
+
+        confmap_model.eval()
+
+        skeletons = get_skeleton_from_config(confmap_config.data_config.skeletons)
+
         if backbone_ckpt_path is not None and head_ckpt_path is not None:
             logger.info(f"Loading backbone weights from `{backbone_ckpt_path}` ...")
             ckpt = torch.load(
@@ -1216,6 +1346,14 @@ class SingleInstancePredictor(Predictor):
             confmap_model.load_state_dict(ckpt["state_dict"], strict=False)
         confmap_model.to(device)
 
+        for k, v in preprocess_config.items():
+            if v is None:
+                preprocess_config[k] = (
+                    confmap_config.data_config.preprocessing[k]
+                    if k in confmap_config.data_config.preprocessing
+                    else None
+                )
+
         # create an instance of SingleInstancePredictor class
         obj = cls(
             confmap_config=confmap_config,
@@ -1229,6 +1367,9 @@ class SingleInstancePredictor(Predictor):
             return_confmaps=return_confmaps,
             device=device,
             preprocess_config=preprocess_config,
+            max_stride=confmap_config.model_config.backbone_config[f"{backbone_type}"][
+                "max_stride"
+            ],
         )
 
         obj._initialize_inference_model()
@@ -1267,31 +1408,7 @@ class SingleInstancePredictor(Predictor):
         if data_path.endswith(".slp") and video_index is None:
             provider = LabelsReader
 
-            max_stride = self.confmap_config.model_config.backbone_config[
-                f"{self.backbone_type}"
-            ]["max_stride"]
-
             self.preprocess = False
-            self.preprocess_config = OmegaConf.create(
-                {
-                    "batch_size": self.batch_size,
-                    "scale": self.confmap_config.data_config.preprocessing.scale,
-                    "ensure_rgb": self.data_config.ensure_rgb,
-                    "ensure_grayscale": self.data_config.ensure_grayscale,
-                    "max_stride": max_stride,
-                    "max_height": (
-                        self.data_config.max_height
-                        if self.data_config.max_height is not None
-                        else self.confmap_config.data_config.preprocessing.max_height
-                    ),
-                    "max_width": (
-                        self.data_config.max_width
-                        if self.data_config.max_width is not None
-                        else self.confmap_config.data_config.preprocessing.max_width
-                    ),
-                    "imagenet_normalize": self.confmap_config.data_config.preprocessing.get("imagenet_normalize", False),
-                }
-            )
 
             self.pipeline = provider.from_filename(
                 filename=data_path,
@@ -1304,30 +1421,6 @@ class SingleInstancePredictor(Predictor):
         else:
             provider = VideoReader
             self.preprocess = True
-            self.preprocess_config = OmegaConf.create(
-                obj={
-                    "batch_size": self.batch_size,
-                    "scale": self.confmap_config.data_config.preprocessing.scale,
-                    "ensure_rgb": self.data_config.ensure_rgb,
-                    "ensure_grayscale": self.data_config.ensure_grayscale,
-                    "max_stride": (
-                        self.confmap_config.model_config.backbone_config[
-                            f"{self.backbone_type}"
-                        ]["max_stride"]
-                    ),
-                    "max_height": (
-                        self.data_config.max_height
-                        if self.data_config.max_height is not None
-                        else self.confmap_config.data_config.preprocessing.max_height
-                    ),
-                    "max_width": (
-                        self.data_config.max_width
-                        if self.data_config.max_width is not None
-                        else self.confmap_config.data_config.preprocessing.max_width
-                    ),
-                    "imagenet_normalize": self.confmap_config.data_config.preprocessing.imagenet_normalize,
-                }
-            )
 
             if data_path.endswith(".slp") and video_index is not None:
                 labels = sio.load_slp(data_path)
@@ -1444,7 +1537,7 @@ class BottomUpPredictor(Predictor):
             this will be ignored. Default: 0.2
         integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
             If `"integral"`, peaks will be refined with integral regression.
-            Default: None.
+            Default: "integral".
         integral_patch_size: (int) Size of patches to crop around each rough peak as an
             integer scalar. Default: 5.
         batch_size: (int) Number of samples per batch. Default: 4.
@@ -1459,6 +1552,10 @@ class BottomUpPredictor(Predictor):
         tracker: A `sleap.nn.tracking.Tracker` that will be called to associate
             detections over time. Predicted instances will not be assigned to tracks if
             if this is `None`.
+        max_stride: The maximum stride of the backbone network, as specified in the model's
+            `backbone_config`. This determines the downsampling factor applied by the backbone,
+            and is used to ensure that input images are padded or resized to be compatible
+            with the model's architecture. Default: 16.
 
     """
 
@@ -1473,7 +1570,7 @@ class BottomUpPredictor(Predictor):
     videos: Optional[List[sio.Video]] = attrs.field(default=None)
     skeletons: Optional[List[sio.Skeleton]] = attrs.field(default=None)
     peak_threshold: float = 0.2
-    integral_refinement: str = None
+    integral_refinement: str = "integral"
     integral_patch_size: int = 5
     batch_size: int = 4
     max_instances: Optional[int] = None
@@ -1481,6 +1578,7 @@ class BottomUpPredictor(Predictor):
     device: str = "cpu"
     preprocess_config: Optional[OmegaConf] = None
     tracker: Optional[Tracker] = None
+    max_stride: int = 16
 
     def _initialize_inference_model(self):
         """Initialize the inference model from the trained models and configuration."""
@@ -1516,14 +1614,6 @@ class BottomUpPredictor(Predictor):
             input_scale=self.bottomup_config.data_config.preprocessing.scale,
         )
 
-    @property
-    def data_config(self) -> OmegaConf:
-        """Returns data config section from the overall config."""
-        data_config = self.bottomup_config.data_config.preprocessing
-        if self.preprocess_config is None:
-            return data_config
-        return self.preprocess_config
-
     @classmethod
     def from_trained_models(
         cls,
@@ -1531,18 +1621,19 @@ class BottomUpPredictor(Predictor):
         backbone_ckpt_path: Optional[str] = None,
         head_ckpt_path: Optional[str] = None,
         peak_threshold: float = 0.2,
-        integral_refinement: str = None,
+        integral_refinement: str = "integral",
         integral_patch_size: int = 5,
         batch_size: int = 4,
         max_instances: Optional[int] = None,
         return_confmaps: bool = False,
         device: str = "cpu",
         preprocess_config: Optional[OmegaConf] = None,
+        max_stride: int = 16,
     ) -> "BottomUpPredictor":
         """Create predictor from saved models.
 
         Args:
-            bottomup_ckpt_path: Path to a bottom-up ckpt dir with model.ckpt and config.yaml.
+            bottomup_ckpt_path: Path to a bottom-up ckpt dir with best.ckpt (or from SLEAP <=1.4 best_model.h5) and training_config.yaml (or from SLEAP <=1.4 training_config.json).
             backbone_ckpt_path: (str) To run inference on any `.ckpt` other than `best.ckpt`
                 from the `model_paths` dir, the path to the `.ckpt` file should be passed here.
             head_ckpt_path: (str) Path to `.ckpt` file if a different set of head layer weights
@@ -1552,7 +1643,7 @@ class BottomUpPredictor(Predictor):
                 this will be ignored. Default: 0.2
             integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
                 If `"integral"`, peaks will be refined with integral regression.
-                Default: None.
+                Default: "integral".
             integral_patch_size: (int) Size of patches to crop around each rough peak as an
                 integer scalar. Default: 5.
             batch_size: (int) Number of samples per batch. Default: 4.
@@ -1564,14 +1655,31 @@ class BottomUpPredictor(Predictor):
                 Default: "cpu"
             preprocess_config: (OmegaConf) OmegaConf object with keys as the parameters
                 in the `data_config.preprocessing` section.
+            max_stride: The maximum stride of the backbone network, as specified in the model's
+                `backbone_config`. This determines the downsampling factor applied by the backbone,
+                and is used to ensure that input images are padded or resized to be compatible
+                with the model's architecture. Default: 16.
 
         Returns:
             An instance of `BottomUpPredictor` with the loaded models.
 
         """
-        bottomup_config = OmegaConf.load(f"{bottomup_ckpt_path}/training_config.yaml")
-        skeletons = get_skeleton_from_config(bottomup_config.data_config.skeletons)
-        ckpt_path = f"{bottomup_ckpt_path}/best.ckpt"
+        is_sleap_ckpt = False
+        if (
+            Path(bottomup_ckpt_path) / "training_config.yaml"
+            in Path(bottomup_ckpt_path).iterdir()
+        ):
+            bottomup_config = OmegaConf.load(
+                (Path(bottomup_ckpt_path) / "training_config.yaml").as_posix()
+            )
+        elif (
+            Path(bottomup_ckpt_path) / "training_config.json"
+            in Path(bottomup_ckpt_path).iterdir()
+        ):
+            is_sleap_ckpt = True
+            bottomup_config = TrainingJobConfig.load_sleap_config(
+                (Path(bottomup_ckpt_path) / "training_config.json").as_posix()
+            )
 
         # check which backbone architecture
         for k, v in bottomup_config.model_config.backbone_config.items():
@@ -1579,13 +1687,32 @@ class BottomUpPredictor(Predictor):
                 backbone_type = k
                 break
 
-        bottomup_model = BottomUpLightningModule.load_from_checkpoint(
-            checkpoint_path=ckpt_path,
-            config=bottomup_config,
-            backbone_type=backbone_type,
-            model_type="bottomup",
-            map_location=device,
-        )
+        if not is_sleap_ckpt:
+            ckpt_path = (Path(bottomup_ckpt_path) / "best.ckpt").as_posix()
+
+            bottomup_model = BottomUpLightningModule.load_from_checkpoint(
+                checkpoint_path=ckpt_path,
+                config=bottomup_config,
+                backbone_type=backbone_type,
+                model_type="bottomup",
+                map_location=device,
+            )
+        else:
+            bottomup_converted_model = load_legacy_model(
+                model_dir=f"{bottomup_ckpt_path}"
+            )
+            bottomup_model = BottomUpLightningModule(
+                config=bottomup_config,
+                backbone_type=backbone_type,
+                model_type="bottomup",
+            )
+            bottomup_model.eval()
+            bottomup_model.model = bottomup_converted_model
+            bottomup_model.to(device)
+
+        bottomup_model.eval()
+        skeletons = get_skeleton_from_config(bottomup_config.data_config.skeletons)
+
         if backbone_ckpt_path is not None and head_ckpt_path is not None:
             logger.info(f"Loading backbone weights from `{backbone_ckpt_path}` ...")
             ckpt = torch.load(
@@ -1616,7 +1743,15 @@ class BottomUpPredictor(Predictor):
             bottomup_model.load_state_dict(ckpt["state_dict"], strict=False)
         bottomup_model.to(device)
 
-        # create an instance of SingleInstancePredictor class
+        for k, v in preprocess_config.items():
+            if v is None:
+                preprocess_config[k] = (
+                    bottomup_config.data_config.preprocessing[k]
+                    if k in bottomup_config.data_config.preprocessing
+                    else None
+                )
+
+        # create an instance of BottomUpPredictor class
         obj = cls(
             bottomup_config=bottomup_config,
             backbone_type=backbone_type,
@@ -1629,6 +1764,9 @@ class BottomUpPredictor(Predictor):
             max_instances=max_instances,
             return_confmaps=return_confmaps,
             preprocess_config=preprocess_config,
+            max_stride=bottomup_config.model_config.backbone_config[f"{backbone_type}"][
+                "max_stride"
+            ],
         )
 
         obj._initialize_inference_model()
@@ -1666,30 +1804,7 @@ class BottomUpPredictor(Predictor):
         if data_path.endswith(".slp") and video_index is None:
             provider = LabelsReader
 
-            max_stride = self.bottomup_config.model_config.backbone_config[
-                f"{self.backbone_type}"
-            ]["max_stride"]
-
             self.preprocess = False
-            self.preprocess_config = OmegaConf.create(
-                {
-                    "batch_size": self.batch_size,
-                    "scale": self.bottomup_config.data_config.preprocessing.scale,
-                    "ensure_rgb": self.data_config.ensure_rgb,
-                    "ensure_grayscale": self.data_config.ensure_grayscale,
-                    "max_stride": max_stride,
-                    "max_height": (
-                        self.data_config.max_height
-                        if self.data_config.max_height is not None
-                        else self.bottomup_config.data_config.preprocessing.max_height
-                    ),
-                    "max_width": (
-                        self.data_config.max_width
-                        if self.data_config.max_width is not None
-                        else self.bottomup_config.data_config.preprocessing.max_width
-                    ),
-                }
-            )
 
             self.pipeline = provider.from_filename(
                 filename=data_path,
@@ -1702,29 +1817,6 @@ class BottomUpPredictor(Predictor):
         else:
             provider = VideoReader
             self.preprocess = True
-            self.preprocess_config = OmegaConf.create(
-                {
-                    "batch_size": self.batch_size,
-                    "scale": self.bottomup_config.data_config.preprocessing.scale,
-                    "ensure_rgb": self.data_config.ensure_rgb,
-                    "ensure_grayscale": self.data_config.ensure_grayscale,
-                    "max_stride": (
-                        self.bottomup_config.model_config.backbone_config[
-                            f"{self.backbone_type}"
-                        ]["max_stride"]
-                    ),
-                    "max_height": (
-                        self.data_config.max_height
-                        if self.data_config.max_height is not None
-                        else self.bottomup_config.data_config.preprocessing.max_height
-                    ),
-                    "max_width": (
-                        self.data_config.max_width
-                        if self.data_config.max_width is not None
-                        else self.bottomup_config.data_config.preprocessing.max_width
-                    ),
-                }
-            )
 
             if data_path.endswith(".slp") and video_index is not None:
                 labels = sio.load_slp(data_path)
@@ -1858,7 +1950,7 @@ class BottomUpMultiClassPredictor(Predictor):
             this will be ignored. Default: 0.2
         integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
             If `"integral"`, peaks will be refined with integral regression.
-            Default: None.
+            Default: "integral".
         integral_patch_size: (int) Size of patches to crop around each rough peak as an
             integer scalar. Default: 5.
         batch_size: (int) Number of samples per batch. Default: 4.
@@ -1870,6 +1962,10 @@ class BottomUpMultiClassPredictor(Predictor):
             Default: "cpu".
         preprocess_config: (OmegaConf) OmegaConf object with keys as the parameters
                 in the `data_config.preprocessing` section.
+        max_stride: The maximum stride of the backbone network, as specified in the model's
+            `backbone_config`. This determines the downsampling factor applied by the backbone,
+            and is used to ensure that input images are padded or resized to be compatible
+            with the model's architecture. Default: 16.
 
     """
 
@@ -1879,13 +1975,14 @@ class BottomUpMultiClassPredictor(Predictor):
     videos: Optional[List[sio.Video]] = attrs.field(default=None)
     skeletons: Optional[List[sio.Skeleton]] = attrs.field(default=None)
     peak_threshold: float = 0.2
-    integral_refinement: str = None
+    integral_refinement: str = "integral"
     integral_patch_size: int = 5
     batch_size: int = 4
     max_instances: Optional[int] = None
     return_confmaps: bool = False
     device: str = "cpu"
     preprocess_config: Optional[OmegaConf] = None
+    max_stride: int = 16
 
     def _initialize_inference_model(self):
         """Initialize the inference model from the trained models and configuration."""
@@ -1901,14 +1998,6 @@ class BottomUpMultiClassPredictor(Predictor):
             input_scale=self.bottomup_config.data_config.preprocessing.scale,
         )
 
-    @property
-    def data_config(self) -> OmegaConf:
-        """Returns data config section from the overall config."""
-        data_config = self.bottomup_config.data_config.preprocessing
-        if self.preprocess_config is None:
-            return data_config
-        return self.preprocess_config
-
     @classmethod
     def from_trained_models(
         cls,
@@ -1916,18 +2005,19 @@ class BottomUpMultiClassPredictor(Predictor):
         backbone_ckpt_path: Optional[str] = None,
         head_ckpt_path: Optional[str] = None,
         peak_threshold: float = 0.2,
-        integral_refinement: str = None,
+        integral_refinement: str = "integral",
         integral_patch_size: int = 5,
         batch_size: int = 4,
         max_instances: Optional[int] = None,
         return_confmaps: bool = False,
         device: str = "cpu",
         preprocess_config: Optional[OmegaConf] = None,
+        max_stride: int = 16,
     ) -> "BottomUpMultiClassPredictor":
         """Create predictor from saved models.
 
         Args:
-            bottomup_ckpt_path: Path to a multi-class bottom-up ckpt dir with model.ckpt and config.yaml.
+            bottomup_ckpt_path: Path to a multi-class bottom-up ckpt dir with best.ckpt (or from SLEAP <=1.4 best_model.h5) and training_config.yaml (or from SLEAP <=1.4 training_config.json).
             backbone_ckpt_path: (str) To run inference on any `.ckpt` other than `best.ckpt`
                 from the `model_paths` dir, the path to the `.ckpt` file should be passed here.
             head_ckpt_path: (str) Path to `.ckpt` file if a different set of head layer weights
@@ -1937,7 +2027,7 @@ class BottomUpMultiClassPredictor(Predictor):
                 this will be ignored. Default: 0.2
             integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
                 If `"integral"`, peaks will be refined with integral regression.
-                Default: None.
+                Default: "integral".
             integral_patch_size: (int) Size of patches to crop around each rough peak as an
                 integer scalar. Default: 5.
             batch_size: (int) Number of samples per batch. Default: 4.
@@ -1949,14 +2039,31 @@ class BottomUpMultiClassPredictor(Predictor):
                 Default: "cpu"
             preprocess_config: (OmegaConf) OmegaConf object with keys as the parameters
                 in the `data_config.preprocessing` section.
+            max_stride: The maximum stride of the backbone network, as specified in the model's
+                `backbone_config`. This determines the downsampling factor applied by the backbone,
+                and is used to ensure that input images are padded or resized to be compatible
+                with the model's architecture. Default: 16.
 
         Returns:
             An instance of `BottomUpPredictor` with the loaded models.
 
         """
-        bottomup_config = OmegaConf.load(f"{bottomup_ckpt_path}/training_config.yaml")
-        skeletons = get_skeleton_from_config(bottomup_config.data_config.skeletons)
-        ckpt_path = f"{bottomup_ckpt_path}/best.ckpt"
+        is_sleap_ckpt = False
+        if (
+            Path(bottomup_ckpt_path) / "training_config.yaml"
+            in Path(bottomup_ckpt_path).iterdir()
+        ):
+            bottomup_config = OmegaConf.load(
+                (Path(bottomup_ckpt_path) / "training_config.yaml").as_posix()
+            )
+        elif (
+            Path(bottomup_ckpt_path) / "training_config.json"
+            in Path(bottomup_ckpt_path).iterdir()
+        ):
+            is_sleap_ckpt = True
+            bottomup_config = TrainingJobConfig.load_sleap_config(
+                (Path(bottomup_ckpt_path) / "training_config.json").as_posix()
+            )
 
         # check which backbone architecture
         for k, v in bottomup_config.model_config.backbone_config.items():
@@ -1964,13 +2071,32 @@ class BottomUpMultiClassPredictor(Predictor):
                 backbone_type = k
                 break
 
-        bottomup_model = BottomUpMultiClassLightningModule.load_from_checkpoint(
-            checkpoint_path=ckpt_path,
-            config=bottomup_config,
-            backbone_type=backbone_type,
-            model_type="multi_class_bottomup",
-            map_location=device,
-        )
+        if not is_sleap_ckpt:
+            ckpt_path = (Path(bottomup_ckpt_path) / "best.ckpt").as_posix()
+
+            bottomup_model = BottomUpMultiClassLightningModule.load_from_checkpoint(
+                checkpoint_path=ckpt_path,
+                config=bottomup_config,
+                backbone_type=backbone_type,
+                model_type="multi_class_bottomup",
+                map_location=device,
+            )
+        else:
+            bottomup_converted_model = load_legacy_model(
+                model_dir=f"{bottomup_ckpt_path}"
+            )
+            bottomup_model = BottomUpMultiClassLightningModule(
+                config=bottomup_config,
+                backbone_type=backbone_type,
+                model_type="multi_class_bottomup",
+            )
+            bottomup_model.eval()
+            bottomup_model.model = bottomup_converted_model
+            bottomup_model.to(device)
+
+        bottomup_model.eval()
+        skeletons = get_skeleton_from_config(bottomup_config.data_config.skeletons)
+
         if backbone_ckpt_path is not None and head_ckpt_path is not None:
             logger.info(f"Loading backbone weights from `{backbone_ckpt_path}` ...")
             ckpt = torch.load(
@@ -2009,6 +2135,14 @@ class BottomUpMultiClassPredictor(Predictor):
             bottomup_model.load_state_dict(ckpt["state_dict"], strict=False)
         bottomup_model.to(device)
 
+        for k, v in preprocess_config.items():
+            if v is None:
+                preprocess_config[k] = (
+                    bottomup_config.data_config.preprocessing[k]
+                    if k in bottomup_config.data_config.preprocessing
+                    else None
+                )
+
         # create an instance of SingleInstancePredictor class
         obj = cls(
             bottomup_config=bottomup_config,
@@ -2022,6 +2156,9 @@ class BottomUpMultiClassPredictor(Predictor):
             max_instances=max_instances,
             return_confmaps=return_confmaps,
             preprocess_config=preprocess_config,
+            max_stride=bottomup_config.model_config.backbone_config[f"{backbone_type}"][
+                "max_stride"
+            ],
         )
 
         obj._initialize_inference_model()
@@ -2064,25 +2201,6 @@ class BottomUpMultiClassPredictor(Predictor):
             ]["max_stride"]
 
             self.preprocess = False
-            self.preprocess_config = OmegaConf.create(
-                {
-                    "batch_size": self.batch_size,
-                    "scale": self.bottomup_config.data_config.preprocessing.scale,
-                    "ensure_rgb": self.data_config.ensure_rgb,
-                    "ensure_grayscale": self.data_config.ensure_grayscale,
-                    "max_stride": max_stride,
-                    "max_height": (
-                        self.data_config.max_height
-                        if self.data_config.max_height is not None
-                        else self.bottomup_config.data_config.preprocessing.max_height
-                    ),
-                    "max_width": (
-                        self.data_config.max_width
-                        if self.data_config.max_width is not None
-                        else self.bottomup_config.data_config.preprocessing.max_width
-                    ),
-                }
-            )
 
             self.pipeline = provider.from_filename(
                 filename=data_path,
@@ -2095,29 +2213,6 @@ class BottomUpMultiClassPredictor(Predictor):
         else:
             provider = VideoReader
             self.preprocess = True
-            self.preprocess_config = OmegaConf.create(
-                {
-                    "batch_size": self.batch_size,
-                    "scale": self.bottomup_config.data_config.preprocessing.scale,
-                    "ensure_rgb": self.data_config.ensure_rgb,
-                    "ensure_grayscale": self.data_config.ensure_grayscale,
-                    "max_stride": (
-                        self.bottomup_config.model_config.backbone_config[
-                            f"{self.backbone_type}"
-                        ]["max_stride"]
-                    ),
-                    "max_height": (
-                        self.data_config.max_height
-                        if self.data_config.max_height is not None
-                        else self.bottomup_config.data_config.preprocessing.max_height
-                    ),
-                    "max_width": (
-                        self.data_config.max_width
-                        if self.data_config.max_width is not None
-                        else self.bottomup_config.data_config.preprocessing.max_width
-                    ),
-                }
-            )
 
             if data_path.endswith(".slp") and video_index is not None:
                 labels = sio.load_slp(data_path)
@@ -2260,7 +2355,7 @@ class TopDownMultiClassPredictor(Predictor):
                 centered-instance model peak finding.
         integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
             If `"integral"`, peaks will be refined with integral regression.
-            Default: None.
+            Default: "integral".
         integral_patch_size: (int) Size of patches to crop around each rough peak as an
             integer scalar. Default: 5.
         batch_size: (int) Number of samples per batch. Default: 4.
@@ -2273,7 +2368,11 @@ class TopDownMultiClassPredictor(Predictor):
         preprocess_config: (OmegaConf) OmegaConf object with keys as the parameters
             in the `data_config.preprocessing` section.
         anchor_part: (str) The name of the node to use as the anchor for the centroid. If not
-            provided, the anchor part in the `training_config.yaml` is used instead.
+            provided, the anchor part in the `training_config.yaml` is used instead. Default: None.
+        max_stride: The maximum stride of the backbone network, as specified in the model's
+            `backbone_config`. This determines the downsampling factor applied by the backbone,
+            and is used to ensure that input images are padded or resized to be compatible
+            with the model's architecture. Default: 16.
 
     """
 
@@ -2286,7 +2385,7 @@ class TopDownMultiClassPredictor(Predictor):
     videos: Optional[List[sio.Video]] = None
     skeletons: Optional[List[sio.Skeleton]] = None
     peak_threshold: Union[float, List[float]] = 0.2
-    integral_refinement: str = None
+    integral_refinement: str = "integral"
     integral_patch_size: int = 5
     batch_size: int = 4
     max_instances: Optional[int] = None
@@ -2294,6 +2393,7 @@ class TopDownMultiClassPredictor(Predictor):
     device: str = "cpu"
     preprocess_config: Optional[OmegaConf] = None
     anchor_part: Optional[str] = None
+    max_stride: int = 16
 
     def _initialize_inference_model(self):
         """Initialize the inference model from the trained models and configuration."""
@@ -2309,16 +2409,18 @@ class TopDownMultiClassPredictor(Predictor):
             centroid_peak_threshold = self.peak_threshold
             centered_instance_peak_threshold = self.peak_threshold
 
-        if self.data_config.crop_hw is None:
-            self.data_config.crop_hw = (
-                self.confmap_config.data_config.preprocessing.crop_hw
-            )
-
         if self.anchor_part is not None:
             anchor_ind = self.skeletons[0].node_names.index(self.anchor_part)
         else:
             anch_pt = None
-            anch_pt = self.confmap_config.model_config.head_configs.multi_class_topdown.confmaps.anchor_part
+            if self.centroid_config is not None:
+                anch_pt = (
+                    self.centroid_config.model_config.head_configs.centroid.confmaps.anchor_part
+                )
+            if self.confmap_config is not None:
+                anch_pt = (
+                    self.confmap_config.model_config.head_configs.multi_class_topdown.confmaps.anchor_part
+                )
             anchor_ind = (
                 self.skeletons[0].node_names.index(anch_pt)
                 if anch_pt is not None
@@ -2328,7 +2430,7 @@ class TopDownMultiClassPredictor(Predictor):
         if self.centroid_config is None:
             centroid_crop_layer = CentroidCrop(
                 use_gt_centroids=True,
-                crop_hw=self.data_config.crop_hw,
+                crop_hw=self.preprocess_config.crop_hw,
                 anchor_ind=anchor_ind,
                 return_crops=return_crops,
             )
@@ -2349,7 +2451,7 @@ class TopDownMultiClassPredictor(Predictor):
                 max_instances=self.max_instances,
                 max_stride=max_stride,
                 input_scale=self.centroid_config.data_config.preprocessing.scale,
-                crop_hw=self.data_config.crop_hw,
+                crop_hw=self.preprocess_config.crop_hw,
                 use_gt_centroids=False,
             )
 
@@ -2380,17 +2482,6 @@ class TopDownMultiClassPredictor(Predictor):
             centroid_crop=centroid_crop_layer, instance_peaks=instance_peaks_layer
         )
 
-    @property
-    def data_config(self) -> OmegaConf:
-        """Returns data config section from the overall config."""
-        if self.centroid_config:
-            data_config = self.centroid_config.data_config.preprocessing
-        else:
-            data_config = self.confmap_config.data_config.preprocessing
-        if self.preprocess_config is None:
-            return data_config
-        return self.preprocess_config
-
     @classmethod
     def from_trained_models(
         cls,
@@ -2399,19 +2490,21 @@ class TopDownMultiClassPredictor(Predictor):
         backbone_ckpt_path: Optional[str] = None,
         head_ckpt_path: Optional[str] = None,
         peak_threshold: float = 0.2,
-        integral_refinement: str = None,
+        integral_refinement: str = "integral",
         integral_patch_size: int = 5,
         batch_size: int = 4,
         max_instances: Optional[int] = None,
         return_confmaps: bool = False,
         device: str = "cpu",
         preprocess_config: Optional[OmegaConf] = None,
+        anchor_part: Optional[str] = None,
+        max_stride: int = 16,
     ) -> "TopDownPredictor":
         """Create predictor from saved models.
 
         Args:
-            centroid_ckpt_path: Path to a centroid ckpt dir with model.ckpt and config.yaml.
-            confmap_ckpt_path: Path to a centroid ckpt dir with model.ckpt and config.yaml.
+            centroid_ckpt_path: Path to a centroid ckpt dir with best.ckpt (or from SLEAP <=1.4 best_model.h5) and training_config.yaml (or from SLEAP <=1.4 training_config.json).
+            confmap_ckpt_path: Path to a centroid ckpt dir with best.ckpt (or from SLEAP <=1.4 best_model.h5) and training_config.yaml (or from SLEAP <=1.4 training_config.json).
             backbone_ckpt_path: (str) To run inference on any `.ckpt` other than `best.ckpt`
                 from the `model_paths` dir, the path to the `.ckpt` file should be passed here.
             head_ckpt_path: (str) Path to `.ckpt` file if a different set of head layer weights
@@ -2421,7 +2514,7 @@ class TopDownMultiClassPredictor(Predictor):
                 this will be ignored. Default: 0.2
             integral_refinement: If `None`, returns the grid-aligned peaks with no refinement.
                 If `"integral"`, peaks will be refined with integral regression.
-                Default: None.
+                Default: "integral".
             integral_patch_size: (int) Size of patches to crop around each rough peak as an
                 integer scalar. Default: 5.
             batch_size: (int) Number of samples per batch. Default: 4.
@@ -2432,7 +2525,13 @@ class TopDownMultiClassPredictor(Predictor):
                 ("cpu", "cuda", "mkldnn", "opengl", "opencl", "ideep", "hip", "msnpu").
                 Default: "cpu"
             preprocess_config: (OmegaConf) OmegaConf object with keys as the parameters
-                in the `data_config.preprocessing` section and the `anchor_part`.
+                in the `data_config.preprocessing` section.
+            anchor_part: (str) The name of the node to use as the anchor for the centroid. If not
+                provided, the anchor part in the `training_config.yaml` is used instead. Default: None.
+            max_stride: The maximum stride of the backbone network, as specified in the model's
+                `backbone_config`. This determines the downsampling factor applied by the backbone,
+                and is used to ensure that input images are padded or resized to be compatible
+                with the model's architecture. Default: 16.
 
         Returns:
             An instance of `TopDownPredictor` with the loaded models.
@@ -2444,12 +2543,25 @@ class TopDownMultiClassPredictor(Predictor):
         centered_instance_backbone_type = None
         centroid_backbone_type = None
         if centroid_ckpt_path is not None:
+            is_sleap_ckpt = False
+            if (
+                Path(centroid_ckpt_path) / "training_config.yaml"
+                in Path(centroid_ckpt_path).iterdir()
+            ):
+                centroid_config = OmegaConf.load(
+                    (Path(centroid_ckpt_path) / "training_config.yaml").as_posix()
+                )
+            elif (
+                Path(centroid_ckpt_path) / "training_config.json"
+                in Path(centroid_ckpt_path).iterdir()
+            ):
+                is_sleap_ckpt = True
+                centroid_config = TrainingJobConfig.load_sleap_config(
+                    (Path(centroid_ckpt_path) / "training_config.json").as_posix()
+                )
+
             # Load centroid model.
-            centroid_config = OmegaConf.load(
-                f"{centroid_ckpt_path}/training_config.yaml"
-            )
             skeletons = get_skeleton_from_config(centroid_config.data_config.skeletons)
-            ckpt_path = f"{centroid_ckpt_path}/best.ckpt"
 
             # check which backbone architecture
             for k, v in centroid_config.model_config.backbone_config.items():
@@ -2457,14 +2569,31 @@ class TopDownMultiClassPredictor(Predictor):
                     centroid_backbone_type = k
                     break
 
-            centroid_model = CentroidLightningModule.load_from_checkpoint(
-                checkpoint_path=ckpt_path,
-                config=centroid_config,
-                skeletons=skeletons,
-                model_type="centroid",
-                backbone_type=centroid_backbone_type,
-                map_location=device,
-            )
+            if not is_sleap_ckpt:
+                ckpt_path = (Path(centroid_ckpt_path) / "best.ckpt").as_posix()
+
+                centroid_model = CentroidLightningModule.load_from_checkpoint(
+                    checkpoint_path=ckpt_path,
+                    config=centroid_config,
+                    model_type="centroid",
+                    backbone_type=centroid_backbone_type,
+                    map_location=device,
+                )
+
+            else:
+                centroid_converted_model = load_legacy_model(
+                    model_dir=f"{centroid_ckpt_path}"
+                )
+                centroid_model = CentroidLightningModule(
+                    config=centroid_config,
+                    model_type="centroid",
+                    backbone_type=centroid_backbone_type,
+                )
+                centroid_model.eval()
+                centroid_model.model = centroid_converted_model
+                centroid_model.to(device)
+
+            centroid_model.eval()
 
             if backbone_ckpt_path is not None and head_ckpt_path is not None:
                 logger.info(f"Loading backbone weights from `{backbone_ckpt_path}` ...")
@@ -2515,24 +2644,55 @@ class TopDownMultiClassPredictor(Predictor):
 
         if confmap_ckpt_path is not None:
             # Load confmap model.
-            confmap_config = OmegaConf.load(f"{confmap_ckpt_path}/training_config.yaml")
-            skeletons = get_skeleton_from_config(confmap_config.data_config.skeletons)
-            ckpt_path = f"{confmap_ckpt_path}/best.ckpt"
+            is_sleap_ckpt = False
+            if (
+                Path(confmap_ckpt_path) / "training_config.yaml"
+                in Path(confmap_ckpt_path).iterdir()
+            ):
+                confmap_config = OmegaConf.load(
+                    (Path(confmap_ckpt_path) / "training_config.yaml").as_posix()
+                )
+            elif (
+                Path(confmap_ckpt_path) / "training_config.json"
+                in Path(confmap_ckpt_path).iterdir()
+            ):
+                is_sleap_ckpt = True
+                confmap_config = TrainingJobConfig.load_sleap_config(
+                    (Path(confmap_ckpt_path) / "training_config.json").as_posix()
+                )
 
             # check which backbone architecture
             for k, v in confmap_config.model_config.backbone_config.items():
                 if v is not None:
                     centered_instance_backbone_type = k
                     break
-            confmap_model = (
-                TopDownCenteredInstanceMultiClassLightningModule.load_from_checkpoint(
+
+            if not is_sleap_ckpt:
+                ckpt_path = (Path(confmap_ckpt_path) / "best.ckpt").as_posix()
+
+                confmap_model = TopDownCenteredInstanceMultiClassLightningModule.load_from_checkpoint(
                     checkpoint_path=ckpt_path,
                     config=confmap_config,
                     model_type="multi_class_topdown",
                     backbone_type=centered_instance_backbone_type,
                     map_location=device,
                 )
-            )
+            else:
+                confmap_converted_model = load_legacy_model(
+                    model_dir=f"{confmap_ckpt_path}"
+                )
+                confmap_model = TopDownCenteredInstanceMultiClassLightningModule(
+                    config=confmap_config,
+                    model_type="multi_class_topdown",
+                    backbone_type=centered_instance_backbone_type,
+                )
+                confmap_model.eval()
+                confmap_model.model = confmap_converted_model
+                confmap_model.to(device)
+
+            confmap_model.eval()
+            skeletons = get_skeleton_from_config(confmap_config.data_config.skeletons)
+
             if backbone_ckpt_path is not None and head_ckpt_path is not None:
                 logger.info(f"Loading backbone weights from `{backbone_ckpt_path}` ...")
                 ckpt = torch.load(
@@ -2584,6 +2744,66 @@ class TopDownMultiClassPredictor(Predictor):
             logger.error(message)
             raise ValueError(message)
 
+        if centroid_config is not None:
+            preprocess_config["scale"] = (
+                centroid_config.data_config.preprocessing.scale
+                if preprocess_config["scale"] is None
+                else preprocess_config["scale"]
+            )
+            preprocess_config["ensure_rgb"] = (
+                centroid_config.data_config.preprocessing.ensure_rgb
+                if preprocess_config["ensure_rgb"] is None
+                else preprocess_config["ensure_rgb"]
+            )
+            preprocess_config["ensure_grayscale"] = (
+                centroid_config.data_config.preprocessing.ensure_grayscale
+                if preprocess_config["ensure_grayscale"] is None
+                else preprocess_config["ensure_grayscale"]
+            )
+            preprocess_config["max_height"] = (
+                centroid_config.data_config.preprocessing.max_height
+                if preprocess_config["max_height"] is None
+                else preprocess_config["max_height"]
+            )
+            preprocess_config["max_width"] = (
+                centroid_config.data_config.preprocessing.max_width
+                if preprocess_config["max_width"] is None
+                else preprocess_config["max_width"]
+            )
+
+        else:
+            preprocess_config["scale"] = (
+                confmap_config.data_config.preprocessing.scale
+                if preprocess_config["scale"] is None
+                else preprocess_config["scale"]
+            )
+            preprocess_config["ensure_rgb"] = (
+                confmap_config.data_config.preprocessing.ensure_rgb
+                if preprocess_config["ensure_rgb"] is None
+                else preprocess_config["ensure_rgb"]
+            )
+            preprocess_config["ensure_grayscale"] = (
+                confmap_config.data_config.preprocessing.ensure_grayscale
+                if preprocess_config["ensure_grayscale"] is None
+                else preprocess_config["ensure_grayscale"]
+            )
+            preprocess_config["max_height"] = (
+                confmap_config.data_config.preprocessing.max_height
+                if preprocess_config["max_height"] is None
+                else preprocess_config["max_height"]
+            )
+            preprocess_config["max_width"] = (
+                confmap_config.data_config.preprocessing.max_width
+                if preprocess_config["max_width"] is None
+                else preprocess_config["max_width"]
+            )
+
+        preprocess_config["crop_hw"] = (
+            confmap_config.data_config.preprocessing.crop_hw
+            if preprocess_config["crop_hw"] is None and confmap_config is not None
+            else preprocess_config["crop_hw"]
+        )
+
         # create an instance of TopDownPredictor class
         obj = cls(
             centroid_config=centroid_config,
@@ -2601,7 +2821,16 @@ class TopDownMultiClassPredictor(Predictor):
             return_confmaps=return_confmaps,
             device=device,
             preprocess_config=preprocess_config,
-            anchor_part=preprocess_config["anchor_part"],
+            anchor_part=anchor_part,
+            max_stride=(
+                centroid_config.model_config.backbone_config[
+                    f"{centroid_backbone_type}"
+                ]["max_stride"]
+                if centroid_config is not None
+                else confmap_config.model_config.backbone_config[
+                    f"{centered_instance_backbone_type}"
+                ]["max_stride"]
+            ),
         )
 
         obj._initialize_inference_model()
@@ -2635,45 +2864,11 @@ class TopDownMultiClassPredictor(Predictor):
             This method initiates the reader class (doesn't return a pipeline) and the
             Thread is started in Predictor._predict_generator() method.
         """
-        if self.centroid_config is not None:
-            max_stride = self.centroid_config.model_config.backbone_config[
-                f"{self.centroid_backbone_type}"
-            ]["max_stride"]
-            scale = self.centroid_config.data_config.preprocessing.scale
-            max_height = self.centroid_config.data_config.preprocessing.max_height
-            max_width = self.centroid_config.data_config.preprocessing.max_width
-        else:
-            max_stride = self.confmap_config.model_config.backbone_config[
-                f"{self.centered_instance_backbone_type}"
-            ]["max_stride"]
-            scale = self.confmap_config.data_config.preprocessing.scale
-            max_height = self.confmap_config.data_config.preprocessing.max_height
-            max_width = self.confmap_config.data_config.preprocessing.max_width
-
         # LabelsReader provider
         if data_path.endswith(".slp") and video_index is None:
             provider = LabelsReader
 
             self.preprocess = False
-            self.preprocess_config = OmegaConf.create(
-                {
-                    "batch_size": self.batch_size,
-                    "scale": scale,
-                    "ensure_rgb": self.data_config.ensure_rgb,
-                    "ensure_grayscale": self.data_config.ensure_grayscale,
-                    "max_stride": max_stride,
-                    "max_height": (
-                        self.data_config.max_height
-                        if self.data_config.max_height is not None
-                        else max_height
-                    ),
-                    "max_width": (
-                        self.data_config.max_width
-                        if self.data_config.max_width is not None
-                        else max_width
-                    ),
-                }
-            )
 
             self.pipeline = provider.from_filename(
                 filename=data_path,
@@ -2695,29 +2890,6 @@ class TopDownMultiClassPredictor(Predictor):
                 raise ValueError(message)
 
             self.preprocess = False
-            self.preprocess_config = OmegaConf.create(
-                {
-                    "batch_size": self.batch_size,
-                    "scale": self.centroid_config.data_config.preprocessing.scale,
-                    "ensure_rgb": self.data_config.ensure_rgb,
-                    "ensure_grayscale": self.data_config.ensure_grayscale,
-                    "max_stride": (
-                        self.centroid_config.model_config.backbone_config[
-                            f"{self.centroid_backbone_type}"
-                        ]["max_stride"]
-                    ),
-                    "max_height": (
-                        self.data_config.max_height
-                        if self.data_config.max_height is not None
-                        else max_height
-                    ),
-                    "max_width": (
-                        self.data_config.max_width
-                        if self.data_config.max_width is not None
-                        else max_width
-                    ),
-                }
-            )
 
             if data_path.endswith(".slp") and video_index is not None:
                 labels = sio.load_slp(data_path)
@@ -2836,8 +3008,9 @@ def run_inference(
     max_instances: Optional[int] = None,
     max_width: Optional[int] = None,
     max_height: Optional[int] = None,
-    ensure_rgb: bool = False,
-    ensure_grayscale: bool = False,
+    ensure_rgb: Optional[bool] = None,
+    input_scale: Optional[float] = None,
+    ensure_grayscale: Optional[bool] = None,
     anchor_part: Optional[str] = None,
     only_labeled_frames: bool = False,
     only_suggested_frames: bool = False,
@@ -2849,8 +3022,7 @@ def run_inference(
     frames: Optional[list] = None,
     crop_size: Optional[int] = None,
     peak_threshold: Union[float, List[float]] = 0.2,
-    ##
-    integral_refinement: str = None,
+    integral_refinement: Optional[str] = "integral",
     integral_patch_size: int = 5,
     return_confmaps: bool = False,
     return_pafs: bool = False,
@@ -2863,7 +3035,6 @@ def run_inference(
     return_class_maps: bool = False,
     return_class_vectors: bool = False,
     make_labels: bool = True,
-    ##
     output_path: Optional[str] = None,
     device: str = "auto",
     tracking: bool = False,
@@ -2899,14 +3070,18 @@ def run_inference(
                 values from the training config are used. Default: None.
         max_height: (int) Maximum height the image should be padded to. If not provided, the
                 values from the training config are used. Default: None.
+        input_scale: (float) Scale factor to apply to the input image. If not provided, the
+                values from the training config are used. Default: None.
         ensure_rgb: (bool) True if the input image should have 3 channels (RGB image). If input has only one
                 channel when this is set to `True`, then the images from single-channel
-                is replicated along the channel axis. If the image has three channels and this is set to False, then we retain the three channels. Default: `False`.
+                is replicated along the channel axis. If the image has three channels and this is set to False, then we retain the three channels. If not provided, the
+                values from the training config are used. Default: `None`.
         ensure_grayscale: (bool) True if the input image should only have a single channel. If input has three channels (RGB) and this
                 is set to True, then we convert the image to grayscale (single-channel)
-                image. If the source image has only one channel and this is set to False, then we retain the single channel input. Default: `False`.
+                image. If the source image has only one channel and this is set to False, then we retain the single channel input. If not provided, the
+                values from the training config are used. Default: `None`.
         anchor_part: (str) The node name to use as the anchor for the centroid. If not
-                provided, the anchor part in the `training_config.yaml` is used.
+                provided, the anchor part in the `training_config.yaml` is used. Default: `None`.
         only_labeled_frames: (bool) `True` if inference should be run only on user-labeled frames. Default: `False`.
         only_suggested_frames: (bool) `True` if inference should be run only on unlabeled suggested frames. Default: `False`.
         batch_size: (int) Number of samples per batch. Default: 4.
@@ -2925,7 +3100,7 @@ def run_inference(
                 centered-instance model peak finding.
         integral_refinement: (str) If `None`, returns the grid-aligned peaks with no refinement.
                 If `"integral"`, peaks will be refined with integral regression.
-                Default: None.
+                Default: `"integral"`.
         integral_patch_size: (int) Size of patches to crop around each rough peak as an
                 integer scalar. Default: 5.
         return_confmaps: (bool) If `True`, predicted confidence maps will be returned
@@ -3020,7 +3195,7 @@ def run_inference(
         "crop_hw": (crop_size, crop_size) if crop_size is not None else None,
         "max_width": max_width,
         "max_height": max_height,
-        "anchor_part": anchor_part,
+        "scale": input_scale,
     }
 
     if model_paths is None or not len(
@@ -3087,8 +3262,11 @@ def run_inference(
                 else "cpu"
             )
 
-        if integral_refinement is not None:  # TODO
+        if integral_refinement is not None and device == "mps":  # TODO
             # kornia/geometry/transform/imgwarp.py:382: in get_perspective_transform. NotImplementedError: The operator 'aten::_linalg_solve_ex.result' is not currently implemented for the MPS device. If you want this op to be added in priority during the prototype phase of this feature, please comment on https://github.com/pytorch/pytorch/issues/77764. As a temporary fix, you can set the environment variable `PYTORCH_ENABLE_MPS_FALLBACK=1` to use the CPU as a fallback for this op. WARNING: this will be slower than running natively on MPS.
+            logger.info(
+                "Integral refinement is not supported with MPS device. Using CPU."
+            )
             device = "cpu"  # not supported with mps
 
         logger.info(f"Using device: {device}")
@@ -3106,6 +3284,7 @@ def run_inference(
             return_confmaps=return_confmaps,
             device=device,
             preprocess_config=OmegaConf.create(preprocess_config),
+            anchor_part=anchor_part,
         )
 
         if (
@@ -3213,7 +3392,7 @@ def run_inference(
     if make_labels:
         if output_path is None:
             output_path = Path(data_path).with_suffix(".predictions.slp")
-        output.save(Path(output_path).as_posix())
+        output.save(Path(output_path).as_posix(), restore_original_videos=False)
     finish_timestamp = str(datetime.now())
     logger.info(f"Predictions output path: {output_path}")
     logger.info("Saved file at:", finish_timestamp)
