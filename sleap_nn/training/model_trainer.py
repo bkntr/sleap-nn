@@ -304,9 +304,12 @@ class ModelTrainer:
         # if save_ckpt_path is None, assign a new dir name
         ckpt_path = self.config.trainer_config.save_ckpt_path
         if ckpt_path is None:
+            num_labeled_frames = 0
+            for l in self.train_labels + self.val_labels:
+                num_labeled_frames += len(l)
             ckpt_path = (
                 datetime.now().strftime("%y%m%d_%H%M%S")
-                + f".{self.model_type}.n={len(self.train_labels)+len(self.val_labels)}"
+                + f".{self.model_type}.n={num_labeled_frames}"
             )
 
         self.config.trainer_config.save_ckpt_path = ckpt_path
@@ -639,7 +642,7 @@ class ModelTrainer:
             limit_train_batches=self.config.trainer_config.train_steps_per_epoch,
             strategy=strategy,
             profiler=profiler,
-            log_every_n_steps=1,
+            log_every_n_steps=50,
         )  # TODO check any other methods to use rank in dataset creations!
 
         # setup dataloaders
