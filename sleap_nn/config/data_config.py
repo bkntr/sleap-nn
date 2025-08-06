@@ -77,8 +77,8 @@ class IntensityConfig:
         gaussian_noise_mean: (float) The mean of the gaussian noise distribution. *Default*: `0.0`.
         gaussian_noise_std: (float) The standard deviation of the gaussian noise distribution. *Default*: `1.0`.
         gaussian_noise_p: (float) Probability of applying random gaussian noise. *Default*: `0.0`.
-        contrast_min: (float) Minimum contrast factor to apply. *Default*: `0.5`.
-        contrast_max: (float) Maximum contrast factor to apply. *Default*: `2.0`.
+        contrast_min: (float) Minimum contrast factor to apply. *Default*: `0.9`.
+        contrast_max: (float) Maximum contrast factor to apply. *Default*: `1.1`.
         contrast_p: (float) Probability of applying random contrast. *Default*: `0.0`.
         brightness: (list) The brightness factor to apply. *Default*: `(1.0, 1.0)`.
         brightness_p: (float) Probability of applying random brightness. *Default*: `0.0`.
@@ -90,8 +90,8 @@ class IntensityConfig:
     gaussian_noise_mean: float = 0.0
     gaussian_noise_std: float = 1.0
     gaussian_noise_p: float = field(default=0.0, validator=validate_proportion)
-    contrast_min: float = field(default=0.5, validator=validators.ge(0))
-    contrast_max: float = field(default=2.0, validator=validators.ge(0))
+    contrast_min: float = field(default=0.9, validator=validators.ge(0))
+    contrast_max: float = field(default=1.1, validator=validators.ge(0))
     contrast_p: float = field(default=0.0, validator=validate_proportion)
     brightness: Tuple[float, float] = (1.0, 1.0)
     brightness_p: float = field(default=0.0, validator=validate_proportion)
@@ -181,7 +181,7 @@ class DataConfig:
     preprocessing: PreprocessingConfig = field(factory=PreprocessingConfig)
     use_augmentations_train: bool = False
     augmentation_config: Optional[AugmentationConfig] = None
-    skeletons: Optional[dict] = None
+    skeletons: Optional[list] = None
 
 
 def data_mapper(legacy_config: dict) -> DataConfig:
@@ -204,10 +204,15 @@ def data_mapper(legacy_config: dict) -> DataConfig:
 
     # get skeleton(s)
     json_skeletons = legacy_config_data.get("labels", {}).get("skeletons", None)
-    skeletons_dict = None
+    skeletons_list = None
     if json_skeletons is not None:
+        skeletons_list = []
         skeletons = SkeletonDecoder().decode(json_skeletons)
-        skeletons_dict = yaml.safe_load(SkeletonYAMLEncoder().encode(skeletons))
+        skeletons = yaml.safe_load(SkeletonYAMLEncoder().encode(skeletons))
+        for skl_name in skeletons.keys():
+            skl = skeletons[skl_name]
+            skl["name"] = skl_name
+            skeletons_list.append(skl)
 
     data_cfg_args = {}
     preprocessing_args = {}
@@ -439,7 +444,7 @@ def data_mapper(legacy_config: dict) -> DataConfig:
     data_cfg_args["use_augmentations_train"] = (
         True if any(intensity_args.values()) or any(geometric_args.values()) else False
     )
-    data_cfg_args["skeletons"] = skeletons_dict
+    data_cfg_args["skeletons"] = skeletons_list
 
     return DataConfig(**data_cfg_args)
 

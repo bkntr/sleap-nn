@@ -235,9 +235,13 @@ class ModelTrainer:
             ]
 
         # save skeleton to config
-        self.config["data_config"]["skeletons"] = yaml.safe_load(
-            SkeletonYAMLEncoder().encode(self.skeletons)
-        )
+        skeleton_yaml = yaml.safe_load(SkeletonYAMLEncoder().encode(self.skeletons))
+        skeleton_names = skeleton_yaml.keys()
+        self.config["data_config"]["skeletons"] = []
+        for skeleton_name in skeleton_names:
+            skl = skeleton_yaml[skeleton_name]
+            skl["name"] = skeleton_name
+            self.config["data_config"]["skeletons"].append(skl)
 
         # if edges and part names aren't set in head configs, get it from labels object.
         head_config = self.config.model_config.head_configs[self.model_type]
@@ -319,6 +323,26 @@ class ModelTrainer:
             if self.config.data_config.cache_img_path is None:
                 self.config.data_config.cache_img_path = Path(
                     self.config.trainer_config.save_ckpt_path
+                )
+
+        # check in channels, verify with img channels / ensure_rgb/ ensure_grayscale
+        if self.train_labels[0] is not None:
+            img_channels = self.train_labels[0][0].image.shape[-1]
+            if self.config.data_config.preprocessing.ensure_rgb:
+                img_channels = 3
+            if self.config.data_config.preprocessing.ensure_grayscale:
+                img_channels = 1
+            if (
+                self.config.model_config.backbone_config[
+                    f"{self.backbone_type}"
+                ].in_channels
+                != img_channels
+            ):
+                self.config.model_config.backbone_config[
+                    f"{self.backbone_type}"
+                ].in_channels = img_channels
+                logger.info(
+                    f"Updating backbone in_channels from {self.config.model_config.backbone_config[f'{self.backbone_type}'].in_channels} to {img_channels}"
                 )
 
     def _setup_model_ckpt_dir(self):
@@ -661,14 +685,15 @@ class ModelTrainer:
         ):  # save config if there are no distributed process
 
             if self.config.trainer_config.use_wandb:
-                wandb.init(
-                    dir=self.config.trainer_config.save_ckpt_path,
-                    project=self.config.trainer_config.wandb.project,
-                    entity=self.config.trainer_config.wandb.entity,
-                    name=self.config.trainer_config.wandb.name,
-                    id=self.config.trainer_config.wandb.prv_runid,
-                    group=self.config.trainer_config.wandb.group,
-                )
+                if wandb.run is None:
+                    wandb.init(
+                        dir=self.config.trainer_config.save_ckpt_path,
+                        project=self.config.trainer_config.wandb.project,
+                        entity=self.config.trainer_config.wandb.entity,
+                        name=self.config.trainer_config.wandb.name,
+                        id=self.config.trainer_config.wandb.prv_runid,
+                        group=self.config.trainer_config.wandb.group,
+                    )
                 self.config.trainer_config.wandb.current_run_id = wandb.run.id
                 wandb.config["run_name"] = self.config.trainer_config.wandb.name
                 wandb.config["run_config"] = OmegaConf.to_container(

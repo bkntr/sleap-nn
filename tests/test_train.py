@@ -44,7 +44,6 @@ def sample_cfg(minimal_instance, tmp_path):
             },
             "model_config": {
                 "init_weights": "default",
-                "pre_trained_weights": None,
                 "pretrained_backbone_weights": None,
                 "pretrained_head_weights": None,
                 "backbone_config": {
@@ -481,6 +480,16 @@ def test_train_method(minimal_instance, tmp_path: str):
     config = OmegaConf.load(f"{tmp_path}/test_custom_head/training_config.yaml")
     assert config.model_config.head_configs.centered_instance is not None
     assert config.model_config.head_configs.centroid is None
+
+    ## invalid scheduler
+    with pytest.raises(ValueError):
+        train(
+            train_labels_path=[minimal_instance],
+            val_labels_path=[minimal_instance],
+            max_epochs=1,
+            trainer_accelerator="cpu",
+            lr_scheduler="invalid_scheduler",
+        )
 
     ## pass dict for scheduler
     train(

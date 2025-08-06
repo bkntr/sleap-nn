@@ -4,8 +4,8 @@ from kornia.geometry.transform import crop_and_resize
 from itertools import cycle
 from pathlib import Path
 import torch.distributed as dist
-from typing import Any, Dict, Iterator, List, Optional, Tuple
-from omegaconf import DictConfig
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from omegaconf import DictConfig, OmegaConf
 import numpy as np
 from PIL import Image
 from loguru import logger
@@ -33,6 +33,7 @@ from sleap_nn.data.confidence_maps import generate_confmaps, generate_multiconfm
 from sleap_nn.data.edge_maps import generate_pafs
 from sleap_nn.data.instance_cropping import make_centered_bboxes
 from sleap_nn.training.utils import is_distributed_initialized
+from sleap_nn.config.get_config import get_aug_config
 
 
 class BaseDataset(Dataset):
@@ -50,8 +51,16 @@ class BaseDataset(Dataset):
         ensure_grayscale: (bool) True if the input image should only have a single channel. If input has three channels (RGB) and this
         is set to True, then we convert the image to grayscale (single-channel)
         image. If the source image has only one channel and this is set to False, then we retain the single channel input. Default: `False`.
-        augmentation_config: DictConfig object with `intensity` and `geometric` keys
-            according to structure `sleap_nn.config.data_config.AugmentationConfig`.
+        intensity_aug: Intensity augmentation configuration. Can be:
+            - String: One of ['uniform_noise', 'gaussian_noise', 'contrast', 'brightness']
+            - List of strings: Multiple intensity augmentations from the allowed values
+            - Dictionary: Custom intensity configuration
+            - None: No intensity augmentation applied
+        geometric_aug: Geometric augmentation configuration. Can be:
+            - String: One of ['rotation', 'scale', 'translate', 'erase_scale', 'mixup']
+            - List of strings: Multiple geometric augmentations from the allowed values
+            - Dictionary: Custom geometric configuration
+            - None: No geometric augmentation applied
         scale: Factor to resize the image dimensions by, specified as a float. Default: 1.0.
         apply_aug: `True` if augmentations should be applied to the data pipeline,
             else `False`. Default: `False`.
@@ -74,8 +83,9 @@ class BaseDataset(Dataset):
         user_instances_only: bool = True,
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
+        intensity_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
+        geometric_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
         imagenet_normalize: bool = False,
-        augmentation_config: Optional[DictConfig] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
         max_hw: Tuple[Optional[int]] = (None, None),
@@ -91,7 +101,24 @@ class BaseDataset(Dataset):
         self.ensure_rgb = ensure_rgb
         self.ensure_grayscale = ensure_grayscale
         self.imagenet_normalize = imagenet_normalize
-        self.augmentation_config = augmentation_config
+
+        # Handle intensity augmentation
+        if intensity_aug is not None:
+            if not isinstance(intensity_aug, DictConfig):
+                intensity_aug = get_aug_config(intensity_aug=intensity_aug)
+                config = OmegaConf.structured(intensity_aug)
+                OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+                intensity_aug = DictConfig(config.intensity)
+        self.intensity_aug = intensity_aug
+
+        # Handle geometric augmentation
+        if geometric_aug is not None:
+            if not isinstance(geometric_aug, DictConfig):
+                geometric_aug = get_aug_config(geometric_aug=geometric_aug)
+                config = OmegaConf.structured(geometric_aug)
+                OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+                geometric_aug = DictConfig(config.geometric)
+        self.geometric_aug = geometric_aug
         self.curr_idx = 0
         self.max_stride = max_stride
         self.scale = scale
@@ -210,8 +237,16 @@ class BottomUpDataset(BaseDataset):
         ensure_grayscale: (bool) True if the input image should only have a single channel. If input has three channels (RGB) and this
         is set to True, then we convert the image to grayscale (single-channel)
         image. If the source image has only one channel and this is set to False, then we retain the single channel input. Default: `False`.
-        augmentation_config: DictConfig object with `intensity` and `geometric` keys
-            according to structure `sleap_nn.config.data_config.AugmentationConfig`.
+        intensity_aug: Intensity augmentation configuration. Can be:
+            - String: One of ['uniform_noise', 'gaussian_noise', 'contrast', 'brightness']
+            - List of strings: Multiple intensity augmentations from the allowed values
+            - Dictionary: Custom intensity configuration
+            - None: No intensity augmentation applied
+        geometric_aug: Geometric augmentation configuration. Can be:
+            - String: One of ['rotation', 'scale', 'translate', 'erase_scale', 'mixup']
+            - List of strings: Multiple geometric augmentations from the allowed values
+            - Dictionary: Custom geometric configuration
+            - None: No geometric augmentation applied
         scale: Factor to resize the image dimensions by, specified as a float. Default: 1.0.
         apply_aug: `True` if augmentations should be applied to the data pipeline,
             else `False`. Default: `False`.
@@ -242,7 +277,8 @@ class BottomUpDataset(BaseDataset):
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
         imagenet_normalize: bool = False,
-        augmentation_config: Optional[DictConfig] = None,
+        intensity_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
+        geometric_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
         max_hw: Tuple[Optional[int]] = (None, None),
@@ -259,7 +295,8 @@ class BottomUpDataset(BaseDataset):
             ensure_rgb=ensure_rgb,
             ensure_grayscale=ensure_grayscale,
             imagenet_normalize=imagenet_normalize,
-            augmentation_config=augmentation_config,
+            intensity_aug=intensity_aug,
+            geometric_aug=geometric_aug,
             scale=scale,
             apply_aug=apply_aug,
             max_hw=max_hw,
@@ -341,19 +378,19 @@ class BottomUpDataset(BaseDataset):
         )
 
         # apply augmentation
-        if self.apply_aug and self.augmentation_config is not None:
-            if self.augmentation_config.intensity is not None:
+        if self.apply_aug:
+            if self.intensity_aug is not None:
                 sample["image"], sample["instances"] = apply_intensity_augmentation(
                     sample["image"],
                     sample["instances"],
-                    **self.augmentation_config.intensity,
+                    **self.intensity_aug,
                 )
 
-            if self.augmentation_config.geometric is not None:
+            if self.geometric_aug is not None:
                 sample["image"], sample["instances"] = apply_geometric_augmentation(
                     sample["image"],
                     sample["instances"],
-                    **self.augmentation_config.geometric,
+                    **self.geometric_aug,
                 )
 
         img_hw = sample["image"].shape[-2:]
@@ -402,8 +439,16 @@ class BottomUpMultiClassDataset(BaseDataset):
         ensure_grayscale: (bool) True if the input image should only have a single channel. If input has three channels (RGB) and this
         is set to True, then we convert the image to grayscale (single-channel)
         image. If the source image has only one channel and this is set to False, then we retain the single channel input. Default: `False`.
-        augmentation_config: DictConfig object with `intensity` and `geometric` keys
-            according to structure `sleap_nn.config.data_config.AugmentationConfig`.
+        intensity_aug: Intensity augmentation configuration. Can be:
+            - String: One of ['uniform_noise', 'gaussian_noise', 'contrast', 'brightness']
+            - List of strings: Multiple intensity augmentations from the allowed values
+            - Dictionary: Custom intensity configuration
+            - None: No intensity augmentation applied
+        geometric_aug: Geometric augmentation configuration. Can be:
+            - String: One of ['rotation', 'scale', 'translate', 'erase_scale', 'mixup']
+            - List of strings: Multiple geometric augmentations from the allowed values
+            - Dictionary: Custom geometric configuration
+            - None: No geometric augmentation applied
         scale: Factor to resize the image dimensions by, specified as a float. Default: 1.0.
         apply_aug: `True` if augmentations should be applied to the data pipeline,
             else `False`. Default: `False`.
@@ -435,7 +480,8 @@ class BottomUpMultiClassDataset(BaseDataset):
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
         imagenet_normalize: bool = False,
-        augmentation_config: Optional[DictConfig] = None,
+        intensity_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
+        geometric_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
         max_hw: Tuple[Optional[int]] = (None, None),
@@ -452,7 +498,8 @@ class BottomUpMultiClassDataset(BaseDataset):
             ensure_rgb=ensure_rgb,
             ensure_grayscale=ensure_grayscale,
             imagenet_normalize=imagenet_normalize,
-            augmentation_config=augmentation_config,
+            intensity_aug=intensity_aug,
+            geometric_aug=geometric_aug,
             scale=scale,
             apply_aug=apply_aug,
             max_hw=max_hw,
@@ -550,19 +597,19 @@ class BottomUpMultiClassDataset(BaseDataset):
         )
 
         # apply augmentation
-        if self.apply_aug and self.augmentation_config is not None:
-            if self.augmentation_config.intensity is not None:
+        if self.apply_aug:
+            if self.intensity_aug is not None:
                 sample["image"], sample["instances"] = apply_intensity_augmentation(
                     sample["image"],
                     sample["instances"],
-                    **self.augmentation_config.intensity,
+                    **self.intensity_aug,
                 )
 
-            if self.augmentation_config.geometric is not None:
+            if self.geometric_aug is not None:
                 sample["image"], sample["instances"] = apply_geometric_augmentation(
                     sample["image"],
                     sample["instances"],
-                    **self.augmentation_config.geometric,
+                    **self.geometric_aug,
                 )
 
         img_hw = sample["image"].shape[-2:]
@@ -614,8 +661,16 @@ class CenteredInstanceDataset(BaseDataset):
         ensure_grayscale: (bool) True if the input image should only have a single channel. If input has three channels (RGB) and this
         is set to True, then we convert the image to grayscale (single-channel)
         image. If the source image has only one channel and this is set to False, then we retain the single channel input. Default: `False`.
-        augmentation_config: DictConfig object with `intensity` and `geometric` keys
-            according to structure `sleap_nn.config.data_config.AugmentationConfig`.
+        intensity_aug: Intensity augmentation configuration. Can be:
+            - String: One of ['uniform_noise', 'gaussian_noise', 'contrast', 'brightness']
+            - List of strings: Multiple intensity augmentations from the allowed values
+            - Dictionary: Custom intensity configuration
+            - None: No intensity augmentation applied
+        geometric_aug: Geometric augmentation configuration. Can be:
+            - String: One of ['rotation', 'scale', 'translate', 'erase_scale', 'mixup']
+            - List of strings: Multiple geometric augmentations from the allowed values
+            - Dictionary: Custom geometric configuration
+            - None: No geometric augmentation applied
         scale: Factor to resize the image dimensions by, specified as a float. Default: 1.0.
         apply_aug: `True` if augmentations should be applied to the data pipeline,
             else `False`. Default: `False`.
@@ -645,7 +700,8 @@ class CenteredInstanceDataset(BaseDataset):
         user_instances_only: bool = True,
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
-        augmentation_config: Optional[DictConfig] = None,
+        intensity_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
+        geometric_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
         max_hw: Tuple[Optional[int]] = (None, None),
@@ -661,7 +717,8 @@ class CenteredInstanceDataset(BaseDataset):
             user_instances_only=user_instances_only,
             ensure_rgb=ensure_rgb,
             ensure_grayscale=ensure_grayscale,
-            augmentation_config=augmentation_config,
+            intensity_aug=intensity_aug,
+            geometric_aug=geometric_aug,
             scale=scale,
             apply_aug=apply_aug,
             max_hw=max_hw,
@@ -791,25 +848,25 @@ class CenteredInstanceDataset(BaseDataset):
         sample["orig_size"] = torch.Tensor([orig_img_height, orig_img_width])
 
         # apply augmentation
-        if self.apply_aug and self.augmentation_config is not None:
-            if self.augmentation_config.intensity is not None:
+        if self.apply_aug:
+            if self.intensity_aug is not None:
                 (
                     sample["instance_image"],
                     sample["instance"],
                 ) = apply_intensity_augmentation(
                     sample["instance_image"],
                     sample["instance"],
-                    **self.augmentation_config.intensity,
+                    **self.intensity_aug,
                 )
 
-            if self.augmentation_config.geometric is not None:
+            if self.geometric_aug is not None:
                 (
                     sample["instance_image"],
                     sample["instance"],
                 ) = apply_geometric_augmentation(
                     sample["instance_image"],
                     sample["instance"],
-                    **self.augmentation_config.geometric,
+                    **self.geometric_aug,
                 )
 
         # re-crop to original crop size
@@ -868,8 +925,16 @@ class TopDownCenteredInstanceMultiClassDataset(CenteredInstanceDataset):
         ensure_grayscale: (bool) True if the input image should only have a single channel. If input has three channels (RGB) and this
         is set to True, then we convert the image to grayscale (single-channel)
         image. If the source image has only one channel and this is set to False, then we retain the single channel input. Default: `False`.
-        augmentation_config: DictConfig object with `intensity` and `geometric` keys
-            according to structure `sleap_nn.config.data_config.AugmentationConfig`.
+        intensity_aug: Intensity augmentation configuration. Can be:
+            - String: One of ['uniform_noise', 'gaussian_noise', 'contrast', 'brightness']
+            - List of strings: Multiple intensity augmentations from the allowed values
+            - Dictionary: Custom intensity configuration
+            - None: No intensity augmentation applied
+        geometric_aug: Geometric augmentation configuration. Can be:
+            - String: One of ['rotation', 'scale', 'translate', 'erase_scale', 'mixup']
+            - List of strings: Multiple geometric augmentations from the allowed values
+            - Dictionary: Custom geometric configuration
+            - None: No geometric augmentation applied
         scale: Factor to resize the image dimensions by, specified as a float. Default: 1.0.
         apply_aug: `True` if augmentations should be applied to the data pipeline,
             else `False`. Default: `False`.
@@ -899,7 +964,8 @@ class TopDownCenteredInstanceMultiClassDataset(CenteredInstanceDataset):
         user_instances_only: bool = True,
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
-        augmentation_config: Optional[DictConfig] = None,
+        intensity_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
+        geometric_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
         max_hw: Tuple[Optional[int]] = (None, None),
@@ -918,7 +984,8 @@ class TopDownCenteredInstanceMultiClassDataset(CenteredInstanceDataset):
             user_instances_only=user_instances_only,
             ensure_rgb=ensure_rgb,
             ensure_grayscale=ensure_grayscale,
-            augmentation_config=augmentation_config,
+            intensity_aug=intensity_aug,
+            geometric_aug=geometric_aug,
             scale=scale,
             apply_aug=apply_aug,
             max_hw=max_hw,
@@ -1045,25 +1112,25 @@ class TopDownCenteredInstanceMultiClassDataset(CenteredInstanceDataset):
         sample["orig_size"] = torch.Tensor([orig_img_height, orig_img_width])
 
         # apply augmentation
-        if self.apply_aug and self.augmentation_config is not None:
-            if self.augmentation_config.intensity is not None:
+        if self.apply_aug:
+            if self.intensity_aug is not None:
                 (
                     sample["instance_image"],
                     sample["instance"],
                 ) = apply_intensity_augmentation(
                     sample["instance_image"],
                     sample["instance"],
-                    **self.augmentation_config.intensity,
+                    **self.intensity_aug,
                 )
 
-            if self.augmentation_config.geometric is not None:
+            if self.geometric_aug is not None:
                 (
                     sample["instance_image"],
                     sample["instance"],
                 ) = apply_geometric_augmentation(
                     sample["instance_image"],
                     sample["instance"],
-                    **self.augmentation_config.geometric,
+                    **self.geometric_aug,
                 )
 
         # re-crop to original crop size
@@ -1125,8 +1192,16 @@ class CentroidDataset(BaseDataset):
         ensure_grayscale: (bool) True if the input image should only have a single channel. If input has three channels (RGB) and this
         is set to True, then we convert the image to grayscale (single-channel)
         image. If the source image has only one channel and this is set to False, then we retain the single channel input. Default: `False`.
-        augmentation_config: DictConfig object with `intensity` and `geometric` keys
-            according to structure `sleap_nn.config.data_config.AugmentationConfig`.
+        intensity_aug: Intensity augmentation configuration. Can be:
+            - String: One of ['uniform_noise', 'gaussian_noise', 'contrast', 'brightness']
+            - List of strings: Multiple intensity augmentations from the allowed values
+            - Dictionary: Custom intensity configuration
+            - None: No intensity augmentation applied
+        geometric_aug: Geometric augmentation configuration. Can be:
+            - String: One of ['rotation', 'scale', 'translate', 'erase_scale', 'mixup']
+            - List of strings: Multiple geometric augmentations from the allowed values
+            - Dictionary: Custom geometric configuration
+            - None: No geometric augmentation applied
         scale: Factor to resize the image dimensions by, specified as a float. Default: 1.0.
         apply_aug: `True` if augmentations should be applied to the data pipeline,
             else `False`. Default: `False`.
@@ -1153,7 +1228,8 @@ class CentroidDataset(BaseDataset):
         user_instances_only: bool = True,
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
-        augmentation_config: Optional[DictConfig] = None,
+        intensity_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
+        geometric_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
         max_hw: Tuple[Optional[int]] = (None, None),
@@ -1169,7 +1245,8 @@ class CentroidDataset(BaseDataset):
             user_instances_only=user_instances_only,
             ensure_rgb=ensure_rgb,
             ensure_grayscale=ensure_grayscale,
-            augmentation_config=augmentation_config,
+            intensity_aug=intensity_aug,
+            geometric_aug=geometric_aug,
             scale=scale,
             apply_aug=apply_aug,
             max_hw=max_hw,
@@ -1254,19 +1331,19 @@ class CentroidDataset(BaseDataset):
         )
 
         # apply augmentation
-        if self.apply_aug and self.augmentation_config is not None:
-            if self.augmentation_config.intensity is not None:
+        if self.apply_aug:
+            if self.intensity_aug is not None:
                 sample["image"], sample["centroids"] = apply_intensity_augmentation(
                     sample["image"],
                     sample["centroids"],
-                    **self.augmentation_config.intensity,
+                    **self.intensity_aug,
                 )
 
-            if self.augmentation_config.geometric is not None:
+            if self.geometric_aug is not None:
                 sample["image"], sample["centroids"] = apply_geometric_augmentation(
                     sample["image"],
                     sample["centroids"],
-                    **self.augmentation_config.geometric,
+                    **self.geometric_aug,
                 )
 
         img_hw = sample["image"].shape[-2:]
@@ -1302,8 +1379,16 @@ class SingleInstanceDataset(BaseDataset):
         ensure_grayscale: (bool) True if the input image should only have a single channel. If input has three channels (RGB) and this
         is set to True, then we convert the image to grayscale (single-channel)
         image. If the source image has only one channel and this is set to False, then we retain the single channel input. Default: `False`.
-        augmentation_config: DictConfig object with `intensity` and `geometric` keys
-            according to structure `sleap_nn.config.data_config.AugmentationConfig`.
+        intensity_aug: Intensity augmentation configuration. Can be:
+            - String: One of ['uniform_noise', 'gaussian_noise', 'contrast', 'brightness']
+            - List of strings: Multiple intensity augmentations from the allowed values
+            - Dictionary: Custom intensity configuration
+            - None: No intensity augmentation applied
+        geometric_aug: Geometric augmentation configuration. Can be:
+            - String: One of ['rotation', 'scale', 'translate', 'erase_scale', 'mixup']
+            - List of strings: Multiple geometric augmentations from the allowed values
+            - Dictionary: Custom geometric configuration
+            - None: No geometric augmentation applied
         scale: Factor to resize the image dimensions by, specified as a float. Default: 1.0.
         apply_aug: `True` if augmentations should be applied to the data pipeline,
             else `False`. Default: `False`.
@@ -1330,7 +1415,8 @@ class SingleInstanceDataset(BaseDataset):
         ensure_rgb: bool = False,
         ensure_grayscale: bool = False,
         imagenet_normalize: bool = False,
-        augmentation_config: Optional[DictConfig] = None,
+        intensity_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
+        geometric_aug: Optional[Union[str, List[str], Dict[str, Any]]] = None,
         scale: float = 1.0,
         apply_aug: bool = False,
         max_hw: Tuple[Optional[int]] = (None, None),
@@ -1347,7 +1433,8 @@ class SingleInstanceDataset(BaseDataset):
             ensure_rgb=ensure_rgb,
             ensure_grayscale=ensure_grayscale,
             imagenet_normalize=imagenet_normalize,
-            augmentation_config=augmentation_config,
+            intensity_aug=intensity_aug,
+            geometric_aug=geometric_aug,
             scale=scale,
             apply_aug=apply_aug,
             max_hw=max_hw,
@@ -1420,19 +1507,19 @@ class SingleInstanceDataset(BaseDataset):
         )
 
         # apply augmentation
-        if self.apply_aug and self.augmentation_config is not None:
-            if self.augmentation_config.intensity is not None:
+        if self.apply_aug:
+            if self.intensity_aug is not None:
                 sample["image"], sample["instances"] = apply_intensity_augmentation(
                     sample["image"],
                     sample["instances"],
-                    **self.augmentation_config.intensity,
+                    **self.intensity_aug,
                 )
 
-            if self.augmentation_config.geometric is not None:
+            if self.geometric_aug is not None:
                 sample["image"], sample["instances"] = apply_geometric_augmentation(
                     sample["image"],
                     sample["instances"],
-                    **self.augmentation_config.geometric,
+                    **self.geometric_aug,
                 )
 
         img_hw = sample["image"].shape[-2:]
@@ -1613,7 +1700,16 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=config.data_config.augmentation_config,
+            intensity_aug=(
+                config.data_config.augmentation_config.intensity
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
+            geometric_aug=(
+                config.data_config.augmentation_config.geometric
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
             max_hw=(
@@ -1636,7 +1732,8 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=None,
+            intensity_aug=None,
+            geometric_aug=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
             max_hw=(
@@ -1661,7 +1758,16 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=config.data_config.augmentation_config,
+            intensity_aug=(
+                config.data_config.augmentation_config.intensity
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
+            geometric_aug=(
+                config.data_config.augmentation_config.geometric
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
             max_hw=(
@@ -1684,7 +1790,8 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=None,
+            intensity_aug=None,
+            geometric_aug=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
             max_hw=(
@@ -1714,7 +1821,16 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=config.data_config.augmentation_config,
+            intensity_aug=(
+                config.data_config.augmentation_config.intensity
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
+            geometric_aug=(
+                config.data_config.augmentation_config.geometric
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
             crop_hw=list(config.data_config.preprocessing.crop_hw),
@@ -1738,7 +1854,8 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=None,
+            intensity_aug=None,
+            geometric_aug=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
             crop_hw=list(config.data_config.preprocessing.crop_hw),
@@ -1769,7 +1886,16 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=config.data_config.augmentation_config,
+            intensity_aug=(
+                config.data_config.augmentation_config.intensity
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
+            geometric_aug=(
+                config.data_config.augmentation_config.geometric
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
             crop_hw=list(config.data_config.preprocessing.crop_hw),
@@ -1793,7 +1919,8 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=None,
+            intensity_aug=None,
+            geometric_aug=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
             crop_hw=list(config.data_config.preprocessing.crop_hw),
@@ -1808,10 +1935,7 @@ def get_train_val_datasets(
         )
 
     elif model_type == "centroid":
-        skeleton_name = list(config.data_config.skeletons.keys())[0]
-        nodes = [
-            x["name"] for x in config.data_config.skeletons[f"{skeleton_name}"]["nodes"]
-        ]
+        nodes = [x["name"] for x in config.data_config.skeletons[0]["nodes"]]
         anchor_part = config.model_config.head_configs.centroid.confmaps.anchor_part
         anchor_ind = nodes.index(anchor_part) if anchor_part is not None else None
         train_dataset = CentroidDataset(
@@ -1825,7 +1949,16 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=config.data_config.augmentation_config,
+            intensity_aug=(
+                config.data_config.augmentation_config.intensity
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
+            geometric_aug=(
+                config.data_config.augmentation_config.geometric
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
             max_hw=(
@@ -1848,7 +1981,8 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=None,
+            intensity_aug=None,
+            geometric_aug=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
             max_hw=(
@@ -1872,7 +2006,16 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=config.data_config.augmentation_config,
+            intensity_aug=(
+                config.data_config.augmentation_config.intensity
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
+            geometric_aug=(
+                config.data_config.augmentation_config.geometric
+                if config.data_config.augmentation_config is not None
+                else None
+            ),
             scale=config.data_config.preprocessing.scale,
             apply_aug=config.data_config.use_augmentations_train,
             max_hw=(
@@ -1894,7 +2037,8 @@ def get_train_val_datasets(
             ensure_rgb=config.data_config.preprocessing.ensure_rgb,
             ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
             imagenet_normalize=config.data_config.preprocessing.imagenet_normalize,
-            augmentation_config=None,
+            intensity_aug=None,
+            geometric_aug=None,
             scale=config.data_config.preprocessing.scale,
             apply_aug=False,
             max_hw=(
@@ -1949,6 +2093,20 @@ def get_train_val_dataloaders(
         else True
     )
 
+    if train_steps_per_epoch is None:
+        train_steps_per_epoch = config.trainer_config.train_steps_per_epoch
+        if train_steps_per_epoch is None:
+            train_steps_per_epoch = get_steps_per_epoch(
+                dataset=train_dataset,
+                batch_size=config.trainer_config.train_data_loader.batch_size,
+            )
+
+    if val_steps_per_epoch is None:
+        val_steps_per_epoch = get_steps_per_epoch(
+            dataset=val_dataset,
+            batch_size=config.trainer_config.val_data_loader.batch_size,
+        )
+
     trainer_devices = config.trainer_config.trainer_devices
     trainer_devices = (
         trainer_devices
@@ -1969,7 +2127,11 @@ def get_train_val_dataloaders(
     train_data_loader = InfiniteDataLoader(
         dataset=train_dataset,
         sampler=train_sampler,
-        len_dataloader=train_steps_per_epoch,
+        len_dataloader=(
+            round(train_steps_per_epoch / trainer_devices)
+            if trainer_devices >= 1
+            else None
+        ),
         shuffle=(
             config.trainer_config.train_data_loader.shuffle
             if train_sampler is None
@@ -2002,7 +2164,11 @@ def get_train_val_dataloaders(
         dataset=val_dataset,
         shuffle=False if val_sampler is None else None,
         sampler=val_sampler,
-        len_dataloader=val_steps_per_epoch,
+        len_dataloader=(
+            round(val_steps_per_epoch / trainer_devices)
+            if trainer_devices >= 1
+            else None
+        ),
         batch_size=config.trainer_config.val_data_loader.batch_size,
         num_workers=config.trainer_config.val_data_loader.num_workers,
         pin_memory=pin_memory,
