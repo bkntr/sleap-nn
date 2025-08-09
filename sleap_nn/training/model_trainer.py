@@ -728,8 +728,8 @@ class ModelTrainer:
             logger.info(
                 f"Finished training loop. [{(time.time() - start_train_time) / 60:.1f} min]"
             )
-            if self.config.trainer_config.use_wandb:
-                wandb.finish()
+            # if self.config.trainer_config.use_wandb:
+            #     wandb.finish()
 
             # delete image disk caching
             if (

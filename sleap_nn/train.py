@@ -18,6 +18,7 @@ from sleap_nn.config.get_config import (
     get_model_config,
     get_data_config,
 )
+import wandb
 
 
 def run_training(config: DictConfig):
@@ -27,34 +28,39 @@ def run_training(config: DictConfig):
     logger.info("Started training at:", start_timestamp)
 
     trainer = ModelTrainer.get_model_trainer_from_config(config)
-    trainer.train()
+    try:
+        trainer.train()
+    except KeyboardInterrupt:
+        logger.info("Training interrupted by user. Evaluating...")
 
-    finish_timestamp = str(datetime.now())
-    total_elapsed = time() - start_train_time
-    logger.info("Finished training at:", finish_timestamp)
-    logger.info(f"Total training time: {total_elapsed} secs")
+    try:
+        finish_timestamp = str(datetime.now())
+        total_elapsed = time() - start_train_time
+        logger.info("Finished training at:", finish_timestamp)
+        logger.info(f"Total training time: {total_elapsed} secs")
 
-    if trainer.trainer.global_rank == 0:
-        # run inference on val dataset
-        if config.trainer_config.save_ckpt:
-            data_paths = {}
-            for index, path in enumerate(trainer.config.data_config.train_labels_path):
-                data_paths[f"train_{index}"] = (
-                    Path(config.trainer_config.save_ckpt_path)
-                    / f"labels_train_gt_{index}.slp"
-                ).as_posix()
-                data_paths[f"val_{index}"] = (
-                    Path(config.trainer_config.save_ckpt_path)
-                    / f"labels_val_gt_{index}.slp"
-                ).as_posix()
+        if trainer.trainer.global_rank == 0:
+            # run inference on val dataset
+            if config.trainer_config.save_ckpt:
+                data_paths = {}
+                for index, path in enumerate(trainer.config.data_config.train_labels_path):
+                    data_paths[f"train_{index}"] = (
+                        Path(config.trainer_config.save_ckpt_path)
+                        / f"labels_train_gt_{index}.slp"
+                    ).as_posix()
+                    data_paths[f"val_{index}"] = (
+                        Path(config.trainer_config.save_ckpt_path)
+                        / f"labels_val_gt_{index}.slp"
+                    ).as_posix()
 
-            if (
-                OmegaConf.select(config, "data_config.test_file_path", default=None)
-                is not None
-            ):
-                data_paths["test"] = config.data_config.test_file_path
+                if (
+                    OmegaConf.select(config, "data_config.test_file_path", default=None)
+                    is not None
+                ):
+                    data_paths["test"] = config.data_config.test_file_path
 
-            for d_name, path in data_paths.items():
+                d_name = "val_0"
+                path = data_paths[d_name]
                 labels = sio.load_slp(path)
 
                 pred_labels = predict(
@@ -67,31 +73,43 @@ def run_training(config: DictConfig):
                     / f"pred_{d_name}.slp",
                     ensure_rgb=config.data_config.preprocessing.ensure_rgb,
                     ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
+                    input_scale=config.data_config.preprocessing.scale,
                 )
 
-                if not len(pred_labels):
-                    logger.info(
-                        f"Skipping eval on `{d_name}` dataset as there are no labeled frames..."
+                if len(pred_labels):
+                    evaluator = Evaluator(
+                        ground_truth_instances=labels, predicted_instances=pred_labels
                     )
-                    continue  # skip if there are no labeled frames
+                    metrics = evaluator.evaluate()
+                    np.savez(
+                        (
+                            Path(config.trainer_config.save_ckpt_path)
+                            / f"{d_name}_pred_metrics.npz"
+                        ).as_posix(),
+                        **metrics,
+                    )
 
-                evaluator = Evaluator(
-                    ground_truth_instances=labels, predicted_instances=pred_labels
-                )
-                metrics = evaluator.evaluate()
-                np.savez(
-                    (
-                        Path(config.trainer_config.save_ckpt_path)
-                        / f"{d_name}_pred_metrics.npz"
-                    ).as_posix(),
-                    **metrics,
-                )
+                    logger.info(f"---------Evaluation on `{d_name}` dataset---------")
+                    logger.info(f"OKS mAP: {metrics['voc_metrics']['oks_voc.mAP']}")
+                    logger.info(f"Average distance: {metrics['distance_metrics']['avg']}")
+                    logger.info(f"p90 dist: {metrics['distance_metrics']['p90']}")
+                    logger.info(f"p50 dist: {metrics['distance_metrics']['p50']}")
 
-                logger.info(f"---------Evaluation on `{d_name}` dataset---------")
-                logger.info(f"OKS mAP: {metrics['voc_metrics']['oks_voc.mAP']}")
-                logger.info(f"Average distance: {metrics['distance_metrics']['avg']}")
-                logger.info(f"p90 dist: {metrics['distance_metrics']['p90']}")
-                logger.info(f"p50 dist: {metrics['distance_metrics']['p50']}")
+                    # Log metrics to wandb if available
+                    if config.trainer_config.use_wandb:
+                        wandb_metrics = {
+                            f"eval/{d_name}/oks_mAP": metrics['voc_metrics']['oks_voc.mAP'],
+                            f"eval/{d_name}/avg_distance": metrics['distance_metrics']['avg'],
+                            f"eval/{d_name}/p90_distance": metrics['distance_metrics']['p90'],
+                            f"eval/{d_name}/p50_distance": metrics['distance_metrics']['p50'],
+                        }
+                        wandb.log(wandb_metrics)
+                        logger.info(f"Logged evaluation metrics for {d_name} to wandb")
+    finally:
+        # Finish wandb session for evaluation if we started one
+        if config.trainer_config.use_wandb:
+            wandb.finish()
+            logger.info("Finished wandb evaluation session")
 
 
 def train(
