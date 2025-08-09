@@ -1,64 +1,66 @@
 """Predictors for running inference."""
 
-from collections import defaultdict
-from typing import Dict, List, Optional, Union, Iterator, Text
-from pathlib import Path
 from abc import ABC, abstractmethod
-import numpy as np
+from collections import defaultdict
 from datetime import datetime
-import sleap_io as sio
-import torchvision.transforms.v2.functional as F
-import torch
+from pathlib import Path
+from time import time
+from typing import Dict, Iterator, List, Optional, Text, Union
+
 import attrs
 import lightning as L
-from omegaconf import OmegaConf
+import numpy as np
+import rich
+import sleap_io as sio
+import torch
+import torchvision.transforms.v2.functional as F
 from loguru import logger
+from omegaconf import OmegaConf
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
+
+from sleap_nn.config.training_job_config import TrainingJobConfig
+from sleap_nn.config.utils import get_model_type_from_cfg
+from sleap_nn.data.normalization import (
+    apply_imagenet_normalization,
+    apply_normalization,
+)
 from sleap_nn.data.providers import LabelsReader, VideoReader
 from sleap_nn.data.resizing import (
-    resize_image,
     apply_pad_to_stride,
-    apply_sizematcher,
     apply_resizer,
+    apply_sizematcher,
+    resize_image,
 )
-from sleap_nn.data.normalization import (
-    apply_normalization,
-    apply_imagenet_normalization,
-)
-from sleap_nn.config.utils import get_model_type_from_cfg
-from sleap_nn.inference.paf_grouping import PAFScorer
-from sleap_nn.training.lightning_modules import (
-    TopDownCenteredInstanceLightningModule,
-    SingleInstanceLightningModule,
-    CentroidLightningModule,
-    BottomUpLightningModule,
-    BottomUpMultiClassLightningModule,
-    TopDownCenteredInstanceMultiClassLightningModule,
-)
-from sleap_nn.inference.single_instance import SingleInstanceInferenceModel
 from sleap_nn.inference.bottomup import (
     BottomUpInferenceModel,
     BottomUpMultiClassInferenceModel,
 )
+from sleap_nn.inference.paf_grouping import PAFScorer
+from sleap_nn.inference.single_instance import SingleInstanceInferenceModel
 from sleap_nn.inference.topdown import (
     CentroidCrop,
     FindInstancePeaks,
     FindInstancePeaksGroundTruth,
-    TopDownMultiClassFindInstancePeaks,
     TopDownInferenceModel,
+    TopDownMultiClassFindInstancePeaks,
 )
 from sleap_nn.inference.utils import get_skeleton_from_config
-from sleap_nn.tracking.tracker import Tracker, run_tracker, connect_single_breaks
 from sleap_nn.legacy_models import load_legacy_model
-from sleap_nn.config.training_job_config import TrainingJobConfig
-import rich
-from rich.progress import (
-    Progress,
-    BarColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-    MofNCompleteColumn,
+from sleap_nn.tracking.tracker import Tracker, connect_single_breaks, run_tracker
+from sleap_nn.training.lightning_modules import (
+    BottomUpLightningModule,
+    BottomUpMultiClassLightningModule,
+    CentroidLightningModule,
+    SingleInstanceLightningModule,
+    TopDownCenteredInstanceLightningModule,
+    TopDownCenteredInstanceMultiClassLightningModule,
 )
-from time import time
 
 
 class RateColumn(rich.progress.ProgressColumn):
@@ -324,6 +326,7 @@ class Predictor(ABC):
         video_index: Optional[int] = None,
         video_dataset: Optional[str] = None,
         video_input_format: str = "channels_last",
+        reader_threads: int = 1,
     ):
         """Create the data pipeline."""
 
@@ -361,6 +364,10 @@ class Predictor(ABC):
         self.pipeline.start()
         total_frames = self.pipeline.total_len()
         done = False
+        # Support multi-producer pipelines (e.g. _MultiLabelsReader) by waiting for all
+        # sentinels before terminating.
+        producers_count = getattr(self.pipeline, "num_workers", 1)
+        sentinel_count = 0
 
         with Progress(
             "{task.description}",
@@ -387,11 +394,17 @@ class Predictor(ABC):
                 org_szs = []
                 instances = []
                 eff_scales = []
-                for _ in range(self.batch_size):
+                # Fill a batch while accounting for multiple sentinels.
+                while len(imgs) < self.batch_size and not done:
                     frame = self.pipeline.frame_buffer.get()
-                    if frame["image"] is None:
-                        done = True
-                        break
+                    if frame["image"] is None:  # sentinel from a producer
+                        sentinel_count += 1
+                        if sentinel_count >= producers_count:
+                            done = True
+                            break  # stop filling batch; nothing more to read
+                        else:
+                            # More producers still running; continue gathering frames.
+                            continue
                     frame["image"] = apply_normalization(frame["image"])
                     frame["image"], eff_scale = apply_sizematcher(
                         frame["image"],
@@ -595,13 +608,9 @@ class TopDownPredictor(Predictor):
         else:
             anch_pt = None
             if self.centroid_config is not None:
-                anch_pt = (
-                    self.centroid_config.model_config.head_configs.centroid.confmaps.anchor_part
-                )
+                anch_pt = self.centroid_config.model_config.head_configs.centroid.confmaps.anchor_part
             if self.confmap_config is not None:
-                anch_pt = (
-                    self.confmap_config.model_config.head_configs.centered_instance.confmaps.anchor_part
-                )
+                anch_pt = self.confmap_config.model_config.head_configs.centered_instance.confmaps.anchor_part
             anchor_ind = (
                 self.skeletons[0].node_names.index(anch_pt)
                 if anch_pt is not None
@@ -1076,7 +1085,6 @@ class TopDownPredictor(Predictor):
                 with an .slp path as an alternative to specifying the video path.
             video_dataset: (str) The dataset for HDF5 videos.
             video_input_format: (str) The input_format for HDF5 videos.
-
         Returns:
             This method initiates the reader class (doesn't return a pipeline) and the
             Thread is started in Predictor._predict_generator() method.
@@ -1427,13 +1435,15 @@ class SingleInstancePredictor(Predictor):
             confmap_model.load_state_dict(ckpt["state_dict"], strict=False)
         confmap_model.to(device)
 
-        for k, v in preprocess_config.items():
-            if v is None:
-                preprocess_config[k] = (
-                    confmap_config.data_config.preprocessing[k]
-                    if k in confmap_config.data_config.preprocessing
-                    else None
-                )
+        # for k, v in preprocess_config.items():
+        #     if v is None:
+        #         preprocess_config[k] = (
+        #             confmap_config.data_config.preprocessing[k]
+        #             if k in confmap_config.data_config.preprocessing
+        #             else None
+        #         )
+        if preprocess_config is None:
+            preprocess_config = confmap_config.data_config.preprocessing
 
         # create an instance of SingleInstancePredictor class
         obj = cls(
@@ -1466,6 +1476,7 @@ class SingleInstancePredictor(Predictor):
         video_index: Optional[int] = None,
         video_dataset: Optional[str] = None,
         video_input_format: str = "channels_last",
+        reader_threads: int = 1,
     ):
         """Make a data loading pipeline.
 
@@ -1479,10 +1490,14 @@ class SingleInstancePredictor(Predictor):
                 with an .slp path as an alternative to specifying the video path.
             video_dataset: (str) The dataset for HDF5 videos.
             video_input_format: (str) The input_format for HDF5 videos.
+            reader_threads: (int) Number of parallel reader threads when using a
+                `.slp` labels file (ignored for raw video inputs or when
+                `video_index` is not None). Frames are partitioned across
+                threads. Default: 1.
 
         Returns:
             This method initiates the reader class (doesn't return a pipeline) and the
-            Thread is started in Predictor._predict_generator() method.
+            Thread(s) are started in Predictor._predict_generator() method.
 
         """
         # LabelsReader provider
@@ -1491,13 +1506,91 @@ class SingleInstancePredictor(Predictor):
 
             self.preprocess = False
 
-            self.pipeline = provider.from_filename(
+            # Wrapper to support multiple LabelsReader workers without modifying
+            # the original provider implementation.
+            class _MultiLabelsReader:
+                """Multi-producer wrapper mimicking LabelsReader interface.
+
+                Partitions the list of filtered labeled frames across several
+                `LabelsReader` worker threads which all push into a shared
+                frame buffer queue. The first sentinel (image=None) encountered
+                by the consumer ends iteration; extra sentinels remain in the
+                queue harmlessly.
+                """
+
+                def __init__(self, *, labels_reader: LabelsReader, num_workers: int):
+                    # Clamp workers to sensible range.
+                    num_workers = max(1, int(num_workers))
+                    self.num_workers = num_workers
+                    self.labels = labels_reader.labels
+                    # Shared queue used by all workers.
+                    # Use same queue type as original reader (avoids new imports outside this class scope).
+                    self.frame_buffer = type(labels_reader.frame_buffer)(
+                        maxsize=labels_reader.frame_buffer.maxsize
+                    )
+
+                    # Obtain full filtered frame list once to avoid repeating any
+                    # in-place modification of `lf.instances` logic.
+                    all_lfs = labels_reader.filtered_lfs
+                    self._total_len = len(all_lfs)
+                    if num_workers == 1:
+                        # Reuse original reader, but redirect its frame_buffer.
+                        labels_reader.frame_buffer = self.frame_buffer
+                        self.workers = [labels_reader]
+                    else:
+                        # Partition frames contiguously for determinism.
+                        # (Could use round-robin; contiguous keeps seek locality.)
+                        chunk_size = (len(all_lfs) + num_workers - 1) // num_workers
+                        self.workers = []
+                        for i in range(num_workers):
+                            start = i * chunk_size
+                            if start >= len(all_lfs):
+                                break
+                            end = min(start + chunk_size, len(all_lfs))
+                            # Instantiate a fresh LabelsReader sharing the same labels
+                            # and queue; then override its filtered_lfs with the slice.
+                            worker = provider(
+                                self.labels,
+                                self.frame_buffer,
+                                labels_reader.instances_key,
+                                labels_reader.only_labeled_frames,
+                                labels_reader.only_suggested_frames,
+                            )
+                            worker.filtered_lfs = all_lfs[start:end]
+                            self.workers.append(worker)
+
+                def start(self):  # mimic Thread API used in predictor
+                    for w in self.workers:
+                        w.start()
+
+                def join(self):
+                    for w in self.workers:
+                        w.join()
+
+                def total_len(self):  # predictor expects this
+                    return self._total_len
+
+                @property
+                def max_height_and_width(self):  # optional compatibility
+                    return max(video.shape[1] for video in self.labels.videos), max(
+                        video.shape[2] for video in self.labels.videos
+                    )
+
+            # Create a single baseline LabelsReader (not started yet) to derive
+            # filtered_lfs and shared metadata; its queue size drives wrapper.
+            baseline_reader = provider.from_filename(
                 filename=data_path,
                 queue_maxsize=queue_maxsize,
                 only_labeled_frames=only_labeled_frames,
                 only_suggested_frames=only_suggested_frames,
             )
-            self.videos = self.pipeline.labels.videos
+            if reader_threads > 1:
+                self.pipeline = _MultiLabelsReader(
+                    labels_reader=baseline_reader, num_workers=reader_threads
+                )
+            else:
+                self.pipeline = baseline_reader
+            self.videos = baseline_reader.labels.videos
 
         else:
             provider = VideoReader
@@ -2551,13 +2644,9 @@ class TopDownMultiClassPredictor(Predictor):
         else:
             anch_pt = None
             if self.centroid_config is not None:
-                anch_pt = (
-                    self.centroid_config.model_config.head_configs.centroid.confmaps.anchor_part
-                )
+                anch_pt = self.centroid_config.model_config.head_configs.centroid.confmaps.anchor_part
             if self.confmap_config is not None:
-                anch_pt = (
-                    self.confmap_config.model_config.head_configs.multi_class_topdown.confmaps.anchor_part
-                )
+                anch_pt = self.confmap_config.model_config.head_configs.multi_class_topdown.confmaps.anchor_part
             anchor_ind = (
                 self.skeletons[0].node_names.index(anch_pt)
                 if anch_pt is not None
@@ -3246,6 +3335,7 @@ def run_inference(
     of_window_size: int = 21,
     of_max_levels: int = 3,
     post_connect_single_breaks: bool = False,
+    reader_threads: int = 1,
 ):
     """Entry point to run inference on trained SLEAP-NN models.
 
@@ -3537,7 +3627,9 @@ def run_inference(
             video_index=video_index,
             video_dataset=video_dataset,
             video_input_format=video_input_format,
+            reader_threads=reader_threads,
         )
+        predictor.preprocess = True
 
         # run predict
         output = predictor.predict(
