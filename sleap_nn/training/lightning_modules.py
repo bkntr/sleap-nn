@@ -56,6 +56,9 @@ from sleap_nn.config.trainer_config import (
     StepLRConfig,
 )
 from sleap_nn.config.get_config import get_backbone_config
+from sleap_nn.architectures.dinov3 import load_dinov3_convnext_weights
+import os
+from typing import Optional, Dict, Mapping, Any, cast
 
 MODEL_WEIGHTS = {
     "Swin_T_Weights": Swin_T_Weights,
@@ -164,16 +167,27 @@ class LightningModel(L.LightningModule):
         self.amsgrad = amsgrad
 
         if self.backbone_type == "convnext" or self.backbone_type == "swint":
-            if (
-                self.backbone_config[f"{self.backbone_type}"]["pre_trained_weights"]
-                is not None
-            ):
-                ckpt = MODEL_WEIGHTS[
-                    self.backbone_config[f"{self.backbone_type}"]["pre_trained_weights"]
-                ].DEFAULT.get_state_dict(progress=True, check_hash=True)
-                input_channels = ckpt["features.0.0.weight"].shape[-3]
-                if self.in_channels != input_channels:  # TODO: not working!
-                    self.input_expand_channels = input_channels
+            pre_w = self.backbone_config[f"{self.backbone_type}"]["pre_trained_weights"]
+            self._pretrained_backbone_state: Optional[Dict[str, torch.Tensor]] = None
+            if pre_w is not None:
+                state = None
+                # Support torchvision enum names as before
+                if isinstance(pre_w, str) and pre_w in MODEL_WEIGHTS:
+                    state = MODEL_WEIGHTS[pre_w].DEFAULT.get_state_dict(progress=True, check_hash=True)
+                # Support DINOv3 local checkpoint path (file path)
+                elif isinstance(pre_w, str) and os.path.exists(pre_w) and self.backbone_type == "convnext":
+                    try:
+                        state = load_dinov3_convnext_weights(ckpt_path=pre_w)
+                        logger.info("Loaded DINOv3 ConvNeXt weights (mapped) from %s", pre_w)
+                    except Exception as e:
+                        logger.warning(f"Failed to load DINOv3 weights from {pre_w}: {e}")
+                        state = None
+
+                if state is not None and "features.0.0.weight" in state:
+                    input_channels = state["features.0.0.weight"].shape[-3]
+                    if self.in_channels != input_channels:  # TODO: not working!
+                        self.input_expand_channels = input_channels
+                    self._pretrained_backbone_state = state
 
         self.model = Model(
             backbone_type=self.backbone_type,

@@ -8,6 +8,7 @@ from attrs import define, field
 from sleap_nn.config.utils import oneof
 from typing import Optional, List
 from loguru import logger
+import os
 
 
 # Define configuration for each backbone type (unet, convnext, swint) configurations
@@ -160,6 +161,10 @@ class ConvNextConfig:
         if value is None:
             return
 
+        # Allow local file path for external checkpoints (e.g., DINOv3)
+        if isinstance(value, str) and os.path.isfile(value):
+            return
+
         convnext_weights = [
             "ConvNeXt_Base_Weights",
             "ConvNeXt_Tiny_Weights",
@@ -228,29 +233,19 @@ class ConvNextSmallConfig(ConvNextConfig):
     max_stride: int = 32
 
     def validate_pre_trained_weights(self, value):
-        """Validate pre_trained_weights.
-
-        Check:
-        convnext_weights are one of
-        (
-            "ConvNeXt_Base_Weights",
-            "ConvNeXt_Tiny_Weights",
-            "ConvNeXt_Small_Weights",
-            "ConvNeXt_Large_Weights",
-        )
-        """
+        """Validate pre_trained_weights. Accept torchvision enum names or a file path."""
         if value is None:
             return
-
+        if isinstance(value, str) and os.path.isfile(value):
+            return
         convnext_weights = [
             "ConvNeXt_Base_Weights",
             "ConvNeXt_Tiny_Weights",
             "ConvNeXt_Small_Weights",
             "ConvNeXt_Large_Weights",
         ]
-
         if value not in convnext_weights:
-            message = f"Invalid pre-trained weights for ConvNext. Must be one of {convnext_weights}"
+            message = f"Invalid pre-trained weights for ConvNext. Must be a file path or one of {convnext_weights}"
             logger.error(message)
             raise ValueError(message)
 
@@ -310,29 +305,19 @@ class ConvNextBaseConfig(ConvNextConfig):
     max_stride: int = 32
 
     def validate_pre_trained_weights(self, value):
-        """Validate pre_trained_weights.
-
-        Check:
-        convnext_weights are one of
-        (
-            "ConvNeXt_Base_Weights",
-            "ConvNeXt_Tiny_Weights",
-            "ConvNeXt_Small_Weights",
-            "ConvNeXt_Large_Weights",
-        )
-        """
+        """Validate pre_trained_weights. Accept torchvision enum names or a file path."""
         if value is None:
             return
-
+        if isinstance(value, str) and os.path.isfile(value):
+            return
         convnext_weights = [
             "ConvNeXt_Base_Weights",
             "ConvNeXt_Tiny_Weights",
             "ConvNeXt_Small_Weights",
             "ConvNeXt_Large_Weights",
         ]
-
         if value not in convnext_weights:
-            message = f"Invalid pre-trained weights for ConvNext. Must be one of {convnext_weights}"
+            message = f"Invalid pre-trained weights for ConvNext. Must be a file path or one of {convnext_weights}"
             logger.error(message)
             raise ValueError(message)
 
