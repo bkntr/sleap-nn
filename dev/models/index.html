@@ -8,28 +8,28 @@
       
       
       
-        <link rel="canonical" href="https://nn.sleap.ai/dev/api/data/normalization/">
+        <link rel="canonical" href="https://nn.sleap.ai/dev/models/">
       
       
-        <link rel="prev" href="../instance_cropping/">
+        <link rel="prev" href="../installation/">
       
       
-        <link rel="next" href="../providers/">
+        <link rel="next" href="../training/">
       
       
-      <link rel="icon" href="../../../assets/favicon.ico">
+      <link rel="icon" href="../assets/favicon.ico">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.17">
     
     
       
-        <title>normalization - sleap-nn documentation</title>
+        <title>Models - sleap-nn documentation</title>
       
     
     
-      <link rel="stylesheet" href="../../../assets/stylesheets/main.7e37652d.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.7e37652d.min.css">
       
         
-        <link rel="stylesheet" href="../../../assets/stylesheets/palette.06af60db.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
       
       
 
@@ -48,9 +48,9 @@
       
     
     
-      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
     
-    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#sleap_nn.data.normalization" class="md-skip">
+        <a href="#model-types" class="md-skip">
           Skip to content
         </a>
       
@@ -92,9 +92,9 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../../.." title="sleap-nn documentation" class="md-header__button md-logo" aria-label="sleap-nn documentation" data-md-component="logo">
+    <a href=".." title="sleap-nn documentation" class="md-header__button md-logo" aria-label="sleap-nn documentation" data-md-component="logo">
       
-  <img src="../../../assets/sleap-logo.png" alt="logo">
+  <img src="../assets/sleap-logo.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              normalization
+              Models
             
           </span>
         </div>
@@ -229,9 +229,9 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../../.." title="sleap-nn documentation" class="md-nav__button md-logo" aria-label="sleap-nn documentation" data-md-component="logo">
+    <a href=".." title="sleap-nn documentation" class="md-nav__button md-logo" aria-label="sleap-nn documentation" data-md-component="logo">
       
-  <img src="../../../assets/sleap-logo.png" alt="logo">
+  <img src="../assets/sleap-logo.png" alt="logo">
 
     </a>
     sleap-nn documentation
@@ -258,7 +258,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../.." class="md-nav__link">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -280,7 +280,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../CHANGELOG/" class="md-nav__link">
+      <a href="../CHANGELOG/" class="md-nav__link">
         
   
   
@@ -302,7 +302,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../config/" class="md-nav__link">
+      <a href="../config/" class="md-nav__link">
         
   
   
@@ -324,7 +324,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../example_notebooks/" class="md-nav__link">
+      <a href="../example_notebooks/" class="md-nav__link">
         
   
   
@@ -346,7 +346,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../inference/" class="md-nav__link">
+      <a href="../inference/" class="md-nav__link">
         
   
   
@@ -368,7 +368,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../installation/" class="md-nav__link">
+      <a href="../installation/" class="md-nav__link">
         
   
   
@@ -387,10 +387,30 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../../models/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Models
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -401,6 +421,51 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#model-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Model Types
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backbone-architectures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Backbone Architectures
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-configure-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      How to configure models?
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -412,7 +477,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../training/" class="md-nav__link">
+      <a href="../training/" class="md-nav__link">
         
   
   
@@ -431,8 +496,6 @@
       
   
   
-    
-  
   
   
     
@@ -445,11 +508,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
         
           
           <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
@@ -465,7 +528,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_9">
             <span class="md-nav__icon md-icon"></span>
             Api
@@ -476,8 +539,6 @@
                 
   
   
-    
-  
   
   
     
@@ -487,15 +548,15 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9_1" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9_1" >
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../" class="md-nav__link ">
+            <a href="../api/" class="md-nav__link ">
               
   
   
@@ -514,7 +575,7 @@
             
           </div>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_9_1_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_9_1_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_9_1">
             <span class="md-nav__icon md-icon"></span>
             sleap_nn
@@ -542,7 +603,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../architectures/" class="md-nav__link ">
+            <a href="../api/architectures/" class="md-nav__link ">
               
   
   
@@ -575,7 +636,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architectures/common/" class="md-nav__link">
+      <a href="../api/architectures/common/" class="md-nav__link">
         
   
   
@@ -598,7 +659,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architectures/convnext/" class="md-nav__link">
+      <a href="../api/architectures/convnext/" class="md-nav__link">
         
   
   
@@ -621,7 +682,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architectures/encoder_decoder/" class="md-nav__link">
+      <a href="../api/architectures/encoder_decoder/" class="md-nav__link">
         
   
   
@@ -644,7 +705,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architectures/heads/" class="md-nav__link">
+      <a href="../api/architectures/heads/" class="md-nav__link">
         
   
   
@@ -667,7 +728,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architectures/model/" class="md-nav__link">
+      <a href="../api/architectures/model/" class="md-nav__link">
         
   
   
@@ -690,7 +751,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architectures/swint/" class="md-nav__link">
+      <a href="../api/architectures/swint/" class="md-nav__link">
         
   
   
@@ -713,7 +774,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architectures/unet/" class="md-nav__link">
+      <a href="../api/architectures/unet/" class="md-nav__link">
         
   
   
@@ -736,7 +797,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architectures/utils/" class="md-nav__link">
+      <a href="../api/architectures/utils/" class="md-nav__link">
         
   
   
@@ -767,7 +828,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli/" class="md-nav__link">
+      <a href="../api/cli/" class="md-nav__link">
         
   
   
@@ -804,7 +865,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../config/" class="md-nav__link ">
+            <a href="../api/config/" class="md-nav__link ">
               
   
   
@@ -837,7 +898,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../config/data_config/" class="md-nav__link">
+      <a href="../api/config/data_config/" class="md-nav__link">
         
   
   
@@ -860,7 +921,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../config/get_config/" class="md-nav__link">
+      <a href="../api/config/get_config/" class="md-nav__link">
         
   
   
@@ -883,7 +944,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../config/model_config/" class="md-nav__link">
+      <a href="../api/config/model_config/" class="md-nav__link">
         
   
   
@@ -906,7 +967,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../config/trainer_config/" class="md-nav__link">
+      <a href="../api/config/trainer_config/" class="md-nav__link">
         
   
   
@@ -929,7 +990,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../config/training_job_config/" class="md-nav__link">
+      <a href="../api/config/training_job_config/" class="md-nav__link">
         
   
   
@@ -952,7 +1013,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../config/utils/" class="md-nav__link">
+      <a href="../api/config/utils/" class="md-nav__link">
         
   
   
@@ -980,8 +1041,6 @@
                 
   
   
-    
-  
   
   
     
@@ -991,15 +1050,15 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9_1_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9_1_4" >
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../" class="md-nav__link ">
+            <a href="../api/data/" class="md-nav__link ">
               
   
   
@@ -1018,7 +1077,7 @@
             
           </div>
         
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_9_1_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_9_1_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_9_1_4">
             <span class="md-nav__icon md-icon"></span>
             data
@@ -1032,7 +1091,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../augmentation/" class="md-nav__link">
+      <a href="../api/data/augmentation/" class="md-nav__link">
         
   
   
@@ -1055,7 +1114,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../confidence_maps/" class="md-nav__link">
+      <a href="../api/data/confidence_maps/" class="md-nav__link">
         
   
   
@@ -1078,7 +1137,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../custom_datasets/" class="md-nav__link">
+      <a href="../api/data/custom_datasets/" class="md-nav__link">
         
   
   
@@ -1101,7 +1160,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../edge_maps/" class="md-nav__link">
+      <a href="../api/data/edge_maps/" class="md-nav__link">
         
   
   
@@ -1124,7 +1183,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../identity/" class="md-nav__link">
+      <a href="../api/data/identity/" class="md-nav__link">
         
   
   
@@ -1147,7 +1206,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../instance_centroids/" class="md-nav__link">
+      <a href="../api/data/instance_centroids/" class="md-nav__link">
         
   
   
@@ -1170,7 +1229,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../instance_cropping/" class="md-nav__link">
+      <a href="../api/data/instance_cropping/" class="md-nav__link">
         
   
   
@@ -1190,30 +1249,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    normalization
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../api/data/normalization/" class="md-nav__link">
         
   
   
@@ -1224,66 +1263,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#sleap_nn.data.normalization" class="md-nav__link">
-    <span class="md-ellipsis">
-      normalization
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="normalization">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#sleap_nn.data.normalization.apply_normalization" class="md-nav__link">
-    <span class="md-ellipsis">
-      apply_normalization
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sleap_nn.data.normalization.convert_to_grayscale" class="md-nav__link">
-    <span class="md-ellipsis">
-      convert_to_grayscale
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sleap_nn.data.normalization.convert_to_rgb" class="md-nav__link">
-    <span class="md-ellipsis">
-      convert_to_rgb
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1296,7 +1275,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../providers/" class="md-nav__link">
+      <a href="../api/data/providers/" class="md-nav__link">
         
   
   
@@ -1319,7 +1298,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../resizing/" class="md-nav__link">
+      <a href="../api/data/resizing/" class="md-nav__link">
         
   
   
@@ -1342,7 +1321,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../utils/" class="md-nav__link">
+      <a href="../api/data/utils/" class="md-nav__link">
         
   
   
@@ -1373,7 +1352,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../evaluation/" class="md-nav__link">
+      <a href="../api/evaluation/" class="md-nav__link">
         
   
   
@@ -1410,7 +1389,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../inference/" class="md-nav__link ">
+            <a href="../api/inference/" class="md-nav__link ">
               
   
   
@@ -1443,7 +1422,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../inference/bottomup/" class="md-nav__link">
+      <a href="../api/inference/bottomup/" class="md-nav__link">
         
   
   
@@ -1466,7 +1445,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../inference/identity/" class="md-nav__link">
+      <a href="../api/inference/identity/" class="md-nav__link">
         
   
   
@@ -1489,7 +1468,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../inference/paf_grouping/" class="md-nav__link">
+      <a href="../api/inference/paf_grouping/" class="md-nav__link">
         
   
   
@@ -1512,7 +1491,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../inference/peak_finding/" class="md-nav__link">
+      <a href="../api/inference/peak_finding/" class="md-nav__link">
         
   
   
@@ -1535,7 +1514,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../inference/predictors/" class="md-nav__link">
+      <a href="../api/inference/predictors/" class="md-nav__link">
         
   
   
@@ -1558,7 +1537,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../inference/single_instance/" class="md-nav__link">
+      <a href="../api/inference/single_instance/" class="md-nav__link">
         
   
   
@@ -1581,7 +1560,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../inference/topdown/" class="md-nav__link">
+      <a href="../api/inference/topdown/" class="md-nav__link">
         
   
   
@@ -1604,7 +1583,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../inference/utils/" class="md-nav__link">
+      <a href="../api/inference/utils/" class="md-nav__link">
         
   
   
@@ -1635,7 +1614,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../legacy_models/" class="md-nav__link">
+      <a href="../api/legacy_models/" class="md-nav__link">
         
   
   
@@ -1658,7 +1637,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../predict/" class="md-nav__link">
+      <a href="../api/predict/" class="md-nav__link">
         
   
   
@@ -1695,7 +1674,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../tracking/" class="md-nav__link ">
+            <a href="../api/tracking/" class="md-nav__link ">
               
   
   
@@ -1742,7 +1721,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../tracking/candidates/" class="md-nav__link ">
+            <a href="../api/tracking/candidates/" class="md-nav__link ">
               
   
   
@@ -1775,7 +1754,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tracking/candidates/fixed_window/" class="md-nav__link">
+      <a href="../api/tracking/candidates/fixed_window/" class="md-nav__link">
         
   
   
@@ -1798,7 +1777,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tracking/candidates/local_queues/" class="md-nav__link">
+      <a href="../api/tracking/candidates/local_queues/" class="md-nav__link">
         
   
   
@@ -1829,7 +1808,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tracking/track_instance/" class="md-nav__link">
+      <a href="../api/tracking/track_instance/" class="md-nav__link">
         
   
   
@@ -1852,7 +1831,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tracking/tracker/" class="md-nav__link">
+      <a href="../api/tracking/tracker/" class="md-nav__link">
         
   
   
@@ -1875,7 +1854,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tracking/utils/" class="md-nav__link">
+      <a href="../api/tracking/utils/" class="md-nav__link">
         
   
   
@@ -1906,7 +1885,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../train/" class="md-nav__link">
+      <a href="../api/train/" class="md-nav__link">
         
   
   
@@ -1943,7 +1922,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../training/" class="md-nav__link ">
+            <a href="../api/training/" class="md-nav__link ">
               
   
   
@@ -1976,7 +1955,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../training/callbacks/" class="md-nav__link">
+      <a href="../api/training/callbacks/" class="md-nav__link">
         
   
   
@@ -1999,7 +1978,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../training/lightning_modules/" class="md-nav__link">
+      <a href="../api/training/lightning_modules/" class="md-nav__link">
         
   
   
@@ -2022,7 +2001,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../training/losses/" class="md-nav__link">
+      <a href="../api/training/losses/" class="md-nav__link">
         
   
   
@@ -2045,7 +2024,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../training/model_trainer/" class="md-nav__link">
+      <a href="../api/training/model_trainer/" class="md-nav__link">
         
   
   
@@ -2068,7 +2047,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../training/utils/" class="md-nav__link">
+      <a href="../api/training/utils/" class="md-nav__link">
         
   
   
@@ -2132,44 +2111,29 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#sleap_nn.data.normalization" class="md-nav__link">
+  <a href="#model-types" class="md-nav__link">
     <span class="md-ellipsis">
-      normalization
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="normalization">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#sleap_nn.data.normalization.apply_normalization" class="md-nav__link">
-    <span class="md-ellipsis">
-      apply_normalization
+      Model Types
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#sleap_nn.data.normalization.convert_to_grayscale" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#backbone-architectures" class="md-nav__link">
     <span class="md-ellipsis">
-      convert_to_grayscale
+      Backbone Architectures
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#sleap_nn.data.normalization.convert_to_rgb" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#how-to-configure-models" class="md-nav__link">
     <span class="md-ellipsis">
-      convert_to_rgb
+      How to configure models?
     </span>
   </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -2192,331 +2156,61 @@
   
 
 
-  <h1>normalization</h1>
-
-<div class="doc doc-object doc-module">
-
-
-
-<h2 id="sleap_nn.data.normalization" class="doc doc-heading">
-            <code>sleap_nn.data.normalization</code>
-
-
-<a href="#sleap_nn.data.normalization" class="headerlink" title="Permanent link">&para;</a></h2>
-
-    <div class="doc doc-contents first">
-
-        <p>This module implements data pipeline blocks for normalization operations.</p>
-
-
-
-
-
-
-
-
-
-
-<p><span class="doc-section-title">Functions:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-            <tr class="doc-section-item">
-              <td><code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;apply_normalization&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;image&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;/code&gt; (&lt;code&gt;sleap_nn.data.normalization.apply_normalization&lt;/code&gt;)" href="#sleap_nn.data.normalization.apply_normalization">apply_normalization</a></code></td>
-              <td>
-                <div class="doc-md-description">
-                  <p>Normalize image tensor.</p>
-                </div>
-              </td>
-            </tr>
-            <tr class="doc-section-item">
-              <td><code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;convert_to_grayscale&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;image&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;/code&gt; (&lt;code&gt;sleap_nn.data.normalization.convert_to_grayscale&lt;/code&gt;)" href="#sleap_nn.data.normalization.convert_to_grayscale">convert_to_grayscale</a></code></td>
-              <td>
-                <div class="doc-md-description">
-                  <p>Convert given image to Grayscale image (single-channel).</p>
-                </div>
-              </td>
-            </tr>
-            <tr class="doc-section-item">
-              <td><code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;convert_to_rgb&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;image&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;/code&gt; (&lt;code&gt;sleap_nn.data.normalization.convert_to_rgb&lt;/code&gt;)" href="#sleap_nn.data.normalization.convert_to_rgb">convert_to_rgb</a></code></td>
-              <td>
-                <div class="doc-md-description">
-                  <p>Convert given image to RGB image (three-channel image).</p>
-                </div>
-              </td>
-            </tr>
-      </tbody>
-    </table>
-
-
-
-
-
-  <div class="doc doc-children">
-
-
-
-
-
-
-
-
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="sleap_nn.data.normalization.apply_normalization" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">apply_normalization</span><span class="p">(</span><span class="n">image</span><span class="p">)</span></code>
-
-<a href="#sleap_nn.data.normalization.apply_normalization" class="headerlink" title="Permanent link">&para;</a></h3>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Normalize image tensor.</p>
-
-
-            <details class="quote">
-              <summary>Source code in <code>sleap_nn/data/normalization.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-41">41</a></span>
-<span class="normal"><a href="#__codelineno-0-42">42</a></span>
-<span class="normal"><a href="#__codelineno-0-43">43</a></span>
-<span class="normal"><a href="#__codelineno-0-44">44</a></span>
-<span class="normal"><a href="#__codelineno-0-45">45</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41"></a><span class="k">def</span><span class="w"> </span><span class="nf">apply_normalization</span><span class="p">(</span><span class="n">image</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
-</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Normalize image tensor.&quot;&quot;&quot;</span>
-</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_floating_point</span><span class="p">(</span><span class="n">image</span><span class="p">):</span>
-</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44"></a>        <span class="n">image</span> <span class="o">=</span> <span class="n">image</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span> <span class="o">/</span> <span class="mf">255.0</span>
-</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45"></a>    <span class="k">return</span> <span class="n">image</span>
-</span></code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="sleap_nn.data.normalization.convert_to_grayscale" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">convert_to_grayscale</span><span class="p">(</span><span class="n">image</span><span class="p">)</span></code>
-
-<a href="#sleap_nn.data.normalization.convert_to_grayscale" class="headerlink" title="Permanent link">&para;</a></h3>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Convert given image to Grayscale image (single-channel).</p>
-<p>This functions converts the input image to grayscale only if the given image is not
-a single-channeled image.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>image</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Tensor image of shape (..., 3, H, W)</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Tensor image of shape (..., 1, H, W).</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-            <details class="quote">
-              <summary>Source code in <code>sleap_nn/data/normalization.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-7"> 7</a></span>
-<span class="normal"><a href="#__codelineno-0-8"> 8</a></span>
-<span class="normal"><a href="#__codelineno-0-9"> 9</a></span>
-<span class="normal"><a href="#__codelineno-0-10">10</a></span>
-<span class="normal"><a href="#__codelineno-0-11">11</a></span>
-<span class="normal"><a href="#__codelineno-0-12">12</a></span>
-<span class="normal"><a href="#__codelineno-0-13">13</a></span>
-<span class="normal"><a href="#__codelineno-0-14">14</a></span>
-<span class="normal"><a href="#__codelineno-0-15">15</a></span>
-<span class="normal"><a href="#__codelineno-0-16">16</a></span>
-<span class="normal"><a href="#__codelineno-0-17">17</a></span>
-<span class="normal"><a href="#__codelineno-0-18">18</a></span>
-<span class="normal"><a href="#__codelineno-0-19">19</a></span>
-<span class="normal"><a href="#__codelineno-0-20">20</a></span>
-<span class="normal"><a href="#__codelineno-0-21">21</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">convert_to_grayscale</span><span class="p">(</span><span class="n">image</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert given image to Grayscale image (single-channel).</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9"></a>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10"></a><span class="sd">    This functions converts the input image to grayscale only if the given image is not</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11"></a><span class="sd">    a single-channeled image.</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12"></a>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13"></a><span class="sd">    Args:</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14"></a><span class="sd">        image: Tensor image of shape (..., 3, H, W)</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15"></a>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16"></a><span class="sd">    Returns:</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17"></a><span class="sd">        Tensor image of shape (..., 1, H, W).</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18"></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19"></a>    <span class="k">if</span> <span class="n">image</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20"></a>        <span class="n">image</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">rgb_to_grayscale</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">num_output_channels</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21"></a>    <span class="k">return</span> <span class="n">image</span>
-</span></code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="sleap_nn.data.normalization.convert_to_rgb" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">convert_to_rgb</span><span class="p">(</span><span class="n">image</span><span class="p">)</span></code>
-
-<a href="#sleap_nn.data.normalization.convert_to_rgb" class="headerlink" title="Permanent link">&para;</a></h3>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Convert given image to RGB image (three-channel image).</p>
-<p>This functions converts the input image to RGB only if the given image is not
-a RGB image.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>image</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Tensor image of shape (..., 1, H, W)</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Tensor image of shape (..., 3, H, W).</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-            <details class="quote">
-              <summary>Source code in <code>sleap_nn/data/normalization.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-24">24</a></span>
-<span class="normal"><a href="#__codelineno-0-25">25</a></span>
-<span class="normal"><a href="#__codelineno-0-26">26</a></span>
-<span class="normal"><a href="#__codelineno-0-27">27</a></span>
-<span class="normal"><a href="#__codelineno-0-28">28</a></span>
-<span class="normal"><a href="#__codelineno-0-29">29</a></span>
-<span class="normal"><a href="#__codelineno-0-30">30</a></span>
-<span class="normal"><a href="#__codelineno-0-31">31</a></span>
-<span class="normal"><a href="#__codelineno-0-32">32</a></span>
-<span class="normal"><a href="#__codelineno-0-33">33</a></span>
-<span class="normal"><a href="#__codelineno-0-34">34</a></span>
-<span class="normal"><a href="#__codelineno-0-35">35</a></span>
-<span class="normal"><a href="#__codelineno-0-36">36</a></span>
-<span class="normal"><a href="#__codelineno-0-37">37</a></span>
-<span class="normal"><a href="#__codelineno-0-38">38</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24"></a><span class="k">def</span><span class="w"> </span><span class="nf">convert_to_rgb</span><span class="p">(</span><span class="n">image</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert given image to RGB image (three-channel image).</span>
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26"></a>
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27"></a><span class="sd">    This functions converts the input image to RGB only if the given image is not</span>
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28"></a><span class="sd">    a RGB image.</span>
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29"></a>
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30"></a><span class="sd">    Args:</span>
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31"></a><span class="sd">        image: Tensor image of shape (..., 1, H, W)</span>
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32"></a>
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33"></a><span class="sd">    Returns:</span>
-</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34"></a><span class="sd">        Tensor image of shape (..., 3, H, W).</span>
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35"></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36"></a>    <span class="k">if</span> <span class="n">image</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37"></a>        <span class="n">image</span> <span class="o">=</span> <span class="n">image</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38"></a>    <span class="k">return</span> <span class="n">image</span>
-</span></code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-
-
-  </div>
-
-    </div>
-
-</div>
+  <h1>Models</h1>
+
+<h2 id="model-types">Model Types<a class="headerlink" href="#model-types" title="Permanent link">&para;</a></h2>
+<h4 id="single-instance">🔹 Single Instance<a class="headerlink" href="#single-instance" title="Permanent link">&para;</a></h4>
+<ul>
+<li>The model predicts the pose of a single animal per frame.</li>
+<li>Useful for datasets where there is exactly one animal present in each frame.</li>
+<li>Simple and fast—no need for instance detection or tracking.</li>
+</ul>
+<h4 id="top-down">🔹 Top-Down<a class="headerlink" href="#top-down" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Stage 1: Centroid detection</strong> – The model first predicts the centroid (center point) of each animal in the frame, providing candidate locations for each instance.</li>
+<li><strong>Stage 2: Centered instance pose estimation</strong> – For each detected centroid, a second model predicts the pose of the animal within a cropped region centered on that centroid.</li>
+<li>This approach enables accurate pose estimation in crowded scenes by focusing on one animal at a time.</li>
+<li>Particularly effective for datasets with moderate to high animal density, where animals are not heavily overlapping.</li>
+</ul>
+<h4 id="bottom-up">🔹 Bottom-Up<a class="headerlink" href="#bottom-up" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Predicts all body part locations (keypoints) and their pairwise associations (Part Affinity Fields, PAFs) for all animals in the frame simultaneously.</li>
+<li>PAFs encode the direction and strength of connections between body parts, enabling the model to group keypoints into individual animals even when they overlap or are occluded.</li>
+<li>Assembles detected keypoints into individual animal instances by solving a global assignment problem based on the predicted PAFs.</li>
+<li>Effective for challenging scenarios with frequent occlusions, close physical contact, or overlapping animals.</li>
+</ul>
+<h4 id="top-down-id-model">🔹 Top-Down ID model<a class="headerlink" href="#top-down-id-model" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Stage 1: Centroid detection</strong> – The model predicts the centroid of each animal instance (same as standard top-down, without classification).</li>
+<li><strong>Stage 2: Centered instance pose estimation with classification</strong> – For each detected centroid, a second model predicts the pose of the animal using the image cropped around the centroid and also classifies the instance into predefined classes using supervised learning with ground truth track IDs from the training data.</li>
+<li><strong>Training Requirement</strong>: Multi-class models require ground truth track IDs during training and are used to assign persistent IDs to animals across frames.</li>
+</ul>
+<h4 id="bottom-up-id-model">🔹 Bottom-Up ID model<a class="headerlink" href="#bottom-up-id-model" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Predicts all body part locations (keypoints) and their class labels for all animals simultaneously.</li>
+<li>Directly classifies keypoints and groups them into instances with class assignments.</li>
+<li>Assembles detected keypoints into individual animal instances by solving a global assignment problem, while maintaining class-specific groupings.</li>
+<li><strong>Training Requirement</strong>: Multi-class models require ground truth track IDs during training and are used to assign persistent IDs to animals across frames.</li>
+</ul>
+<h2 id="backbone-architectures">Backbone Architectures<a class="headerlink" href="#backbone-architectures" title="Permanent link">&para;</a></h2>
+<p>SLEAP-NN supports three different backbone architectures for feature extraction, each offering unique advantages for pose estimation tasks.</p>
+<h4 id="unet">UNet<a class="headerlink" href="#unet" title="Permanent link">&para;</a></h4>
+<p>UNet is based on the original U-Net architecture from Ronneberger et al. (2015), which was made modular and adapted for pose estimation in Pereira et al. (2019). It uses an encoder-decoder structure with skip connections to capture both fine-grained details and high-level features. UNet offers the highest flexibility with configurable depth and filters. It supports stem blocks for initial downsampling, middle blocks for additional processing, and variable convolution layers per block, making it ideal for custom architectures.</p>
+<h4 id="swin-transformer-swint">Swin Transformer (SwinT)<a class="headerlink" href="#swin-transformer-swint" title="Permanent link">&para;</a></h4>
+<p>Swin Transformer (SwinT) is based on Liu et al. (2021) "Swin Transformer: Hierarchical Vision Transformer using Shifted Windows" and uses a hierarchical vision transformer with shifted windows to efficiently process images at multiple scales while maintaining the benefits of self-attention mechanisms. SwinT is also a large model that divides images into non-overlapping windows and applies self-attention within each window, with shifted window mechanisms allowing information flow between windows. It's available in Tiny, Small, and Base configurations and is particularly effective for capturing complex spatial relationships and global context understanding, though it requires significant computational resources. Pretrained ImageNet weights are available for all Tiny, Small, and Base configurations, enabling transfer learning for improved performance.</p>
+<h4 id="convnext">ConvNeXt<a class="headerlink" href="#convnext" title="Permanent link">&para;</a></h4>
+<p>ConvNeXt is based on Liu et al. (2022) "A ConvNet for the 2020s" and modernizes traditional convolutional networks by incorporating design principles from vision transformers while maintaining CNN efficiency. It uses a hierarchical structure with depth-wise convolutions, layer normalization, and modern activation functions. ConvNeXt is a large model that supports ImageNet pre-trained weights for transfer learning and is available in Tiny, Small, Base, and Large configurations, making it ideal for high-performance applications with standard image sizes. Pretrained ImageNet weights are available for all Tiny, Small, Base, and Large configurations, allowing easy initialization for transfer learning.</p>
+<h2 id="how-to-configure-models">How to configure models?<a class="headerlink" href="#how-to-configure-models" title="Permanent link">&para;</a></h2>
+<p>To train or use a specific model type, you must set the corresponding <code>head_configs</code> in the <code>model_config</code> section of your configuration file. Different model types require different head configurations:</p>
+<ul>
+<li><strong>Single Instance models</strong> use one head (<code>single_instance</code>)</li>
+<li><strong>Top-Down models</strong> each model (centroid and centered-instance) use one head (<code>con</code>)</li>
+<li><strong>Bottom-Up models</strong> use two heads (<code>bottomup</code> with both <code>confmaps</code> and <code>pafs</code>)</li>
+<li><strong>ID models</strong> use two heads (e.g., <code>multi_class_bottomup</code> with both <code>confmaps</code> and <code>class_maps</code>/ <code>class_vectors</code>)</li>
+</ul>
+<p>The choice and configuration of these heads determine the model's outputs and behavior, so it's important to set them carefully according to your task.</p>
+<p>For backbone configuration, you can specify the architecture type and parameters in the <code>backbone_config</code> section. Each backbone type (UNet, ConvNeXt, SwinT) has its own configuration options that control the network architecture, such as filter counts, depths, and other architectural parameters.</p>
+<p>For a detailed explanation of all <code>model_config</code>, <code>head_configs</code>, and <code>backbone_config</code> options—including how to specify multiple heads and the meaning of each parameter—see the <a href="../config/#backbone-configuration">backbone_config section</a> and <a href="../config/#head-configuration">head_configs section</a>.</p>
 
 
 
@@ -2571,10 +2265,10 @@ a RGB image.</p>
     
     
       
-      <script id="__config" type="application/json">{"base": "../../..", "features": ["navigation.tracking", "toc.follow", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.tooltips", "content.code.select", "content.footnote.tooltips"], "search": "../../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tracking", "toc.follow", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.tooltips", "content.code.select", "content.footnote.tooltips"], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../../assets/javascripts/bundle.92b07e13.min.js"></script>
+      <script src="../assets/javascripts/bundle.92b07e13.min.js"></script>
       
     
   </body>
