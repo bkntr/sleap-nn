@@ -74,6 +74,9 @@ def run_training(config: DictConfig):
                     ensure_rgb=config.data_config.preprocessing.ensure_rgb,
                     ensure_grayscale=config.data_config.preprocessing.ensure_grayscale,
                     input_scale=config.data_config.preprocessing.scale,
+                    imagenet_normalize=config.data_config.preprocessing.get(
+                        "imagenet_normalize", False
+                    ),
                 )
 
                 if len(pred_labels):

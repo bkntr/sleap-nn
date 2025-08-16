@@ -3336,6 +3336,7 @@ def run_inference(
     of_max_levels: int = 3,
     post_connect_single_breaks: bool = False,
     reader_threads: int = 1,
+    imagenet_normalize: bool = False,
 ):
     """Entry point to run inference on trained SLEAP-NN models.
 
@@ -3479,6 +3480,7 @@ def run_inference(
         "max_width": max_width,
         "max_height": max_height,
         "scale": input_scale,
+        "imagenet_normalize": imagenet_normalize
     }
 
     if model_paths is None or not len(
