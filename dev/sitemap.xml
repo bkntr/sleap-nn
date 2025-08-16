@@ -13,19 +13,11 @@
          <lastmod>2025-08-16</lastmod>
     </url>
     <url>
-         <loc>https://nn.sleap.ai/dev/example_notebooks/</loc>
-         <lastmod>2025-08-16</lastmod>
-    </url>
-    <url>
-         <loc>https://nn.sleap.ai/dev/inference/</loc>
+         <loc>https://nn.sleap.ai/dev/configuration/</loc>
          <lastmod>2025-08-16</lastmod>
     </url>
     <url>
          <loc>https://nn.sleap.ai/dev/installation/</loc>
-         <lastmod>2025-08-16</lastmod>
-    </url>
-    <url>
-         <loc>https://nn.sleap.ai/dev/models/</loc>
          <lastmod>2025-08-16</lastmod>
     </url>
     <url>
@@ -70,6 +62,10 @@
     </url>
     <url>
          <loc>https://nn.sleap.ai/dev/api/architectures/convnext/</loc>
+         <lastmod>2025-08-16</lastmod>
+    </url>
+    <url>
+         <loc>https://nn.sleap.ai/dev/api/architectures/dinov3/</loc>
          <lastmod>2025-08-16</lastmod>
     </url>
     <url>
